@@ -4,7 +4,7 @@
 //
 // pioggia 0
 //
-//
+// painlessmesh 1.5.4 arduinojson 7.0.4
 //************************************************************
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
@@ -15,19 +15,12 @@ Adafruit_BME280 bme; // I2C
 void ICACHE_RAM_ATTR leggi_pioggia();
 int pioggia = 0;
 volatile boolean pubblicaPioggia = false;
-
+const unsigned long RETRY_ROOT_INTERVAL = 1200000; // 20 minuti
+bool retryTaskEnabled = false; // Flag per il task di retry
 float t,h,p,a;
-int32_t temperature;
-int32_t pressure;
-int16_t retT;
-int16_t retP;
-int16_t oversampling = 7;
 String msg;
-unsigned long now;
-int Statoreed = 0; // variabile per la lettura del contatto
-int Statoreed_old = 0; // variabile per evitare doppio conteggio
 //#include "painlessMesh.h"
-#include "namedMesh.h"
+#include "../namedmesh/namedMesh.h"
 
 #define   MESH_PREFIX     "whateverYouLike"
 #define   MESH_PASSWORD   "somethingSneaky"
@@ -39,19 +32,20 @@ namedMesh  mesh;
 
 String nodeName = "remota"; // Name needs to be unique
 String to = "bridgemqtt";
-uint32_t root_id;
+uint32_t root_id=0;
 
 #define ROLE    "remota"
-#define VERSION "Remota v3.0.1"
+#define VERSION "Remota v3.1.0"
 #define MESSAGE "remota "
 
 // User stub
 void sendMessage() ; // Prototype so PlatformIO doesn't complain
 void sendMessage1();
-
+void retryRoot();
 
 Task taskSendMessage( TASK_SECOND * 1 , TASK_FOREVER, &sendMessage );
 Task taskSendMessage1( TASK_SECOND * 1 , TASK_FOREVER, &sendMessage1 );
+Task retryRootTask(RETRY_ROOT_INTERVAL, TASK_ONCE, &retryRoot);
 
 void sendMessage() {
   read_bme280();
@@ -67,13 +61,12 @@ void sendMessage() {
   msg = "altitudine/";
   msg += a;
   mesh.sendSingle(to, msg);
-  
-  taskSendMessage.setInterval( random( TASK_SECOND * 200, TASK_SECOND * 300 ));
+  taskSendMessage.setInterval( random( TASK_SECOND * 300, TASK_SECOND * 400 ));
 }
 
 void sendMessage1() {
   update_status();
-  taskSendMessage1.setInterval( random( TASK_SECOND * 400, TASK_SECOND * 500 ));
+  taskSendMessage1.setInterval( random( TASK_SECOND * 500, TASK_SECOND * 600 ));
 }
 
 // Needed for painless library
@@ -87,8 +80,18 @@ void newConnectionCallback(uint32_t nodeId) {
 }
 
 void changedConnectionCallback() {
-  Serial.printf("Changed connections\n");
-}
+  Serial.println("changedConnectionCallback");
+  if (!mesh.isConnected(root_id)) {
+    Serial.println("Connessione al root persa! Pianifico il retry.");
+    if (!retryTaskEnabled) { // Controlla il flag
+      retryRootTask.enable();
+      retryTaskEnabled = true; // Imposta il flag
+    }
+  } else {
+    Serial.println("Connessione al root ripristinata.");
+    retryRootTask.disable();
+    retryTaskEnabled = false; // Resetta il flag
+  }}
 
 void nodeTimeAdjustedCallback(int32_t offset) {
     Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
@@ -100,19 +103,17 @@ void read_bme280() {
   p = bme.readPressure()/100;
   a = bme.readAltitude(SEALEVELPRESSURE_HPA);
   if (isnan(h) || isnan(t)) {
-          Serial.println("Failed to read from DHT sensor!");
+          //Serial.println("Failed to read from DHT sensor!");
           msg = "error/FailedtoreadfromBMEsensor";
           mesh.sendSingle(to, msg);
           return;
         }}
 
-void leggi_pioggia()
-{
+void leggi_pioggia() {
   pubblicaPioggia = true;
 }
 
-void update_status()
-{
+void update_status() {
   long uptime = millis() / 60000L;
   msg = "uptime/";
   msg += uptime;
@@ -136,6 +137,15 @@ void update_status()
   msg += String(WiFi.RSSI());
   mesh.sendSingle(to, msg);
 }
+
+void retryRoot() {
+  if (!mesh.isConnected(root_id)) {
+    Serial.println("Ancora offline dopo il retry. Riavvio...");
+    ESP.restart();
+  } else {
+    Serial.println("Root tornato online.");
+    retryTaskEnabled = false; // Resetta il flag anche qui, per sicurezza
+  }}
 
 void setup() {
   Serial.begin(115200);
@@ -168,10 +178,4 @@ void loop() {
     msg = "pioggia/1";
     mesh.sendSingle(to, msg);
     pubblicaPioggia = false;
-  }
-  
-    if((millis() - now) > 600000) { //600000 - 10 min
-      now=millis();
-      if(!(mesh.isConnected(root_id))){
-        ESP.restart();
-    } } }
+  }}

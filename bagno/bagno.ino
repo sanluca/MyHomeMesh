@@ -19,7 +19,7 @@ bool relayState = LOW;
 
 Button2 btn1(BUTTON_1);
 //#include "painlessMesh.h"
-#include "namedMesh.h"
+#include "../namedmesh/namedMesh.h"
 
 #define   MESH_PREFIX     "whateverYouLike"
 #define   MESH_PASSWORD   "somethingSneaky"
@@ -31,7 +31,7 @@ namedMesh  mesh;
 String msg,rel;
 String nodeName = "bagno"; // Name needs to be unique
 String to = "bridgemqtt";
-uint32_t root_id = 0;
+uint32_t root_id =0;
 
 #define ROLE    "bagno"
 #define VERSION "Bagno v4.0.6"

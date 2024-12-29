@@ -46,7 +46,7 @@ volatile boolean leggiVento=false;
 Scheduler userScheduler; // to control your personal task
 //painlessMesh  mesh;
 namedMesh  mesh;
-String msg,rel;//rel2;
+String msg,rel;
 String nodeName = "tenda"; // Name needs to be unique
 String to = "bridgemqtt";
 uint32_t root_id=0;
@@ -132,14 +132,13 @@ void read_sht30(){
           msg = "error/FailedtoreadfromSHTsensor";
           mesh.sendSingle(to, msg);
           return;
-  }}
+}}
 
 void read_wind() {
   leggiVento=true;
- }
+}
 
-void update_status()
-{
+void update_status() {
   long uptime = millis() / 60000L;
   msg = "uptime/";
   msg += uptime;
@@ -171,8 +170,7 @@ void retryRoot() {
   } else {
     Serial.println("Root tornato online.");
     retryTaskEnabled = false; // Resetta il flag anche qui, per sicurezza
-  }
-}
+  }}
 
 void setup() {
   Serial.begin(115200);

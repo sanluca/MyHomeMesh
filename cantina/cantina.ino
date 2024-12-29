@@ -4,6 +4,7 @@
 // ds18b20 su D6
 // leggi acqua D5
 //
+// painlessmesh 1.5.4 arduinojson 7.0.4
 //************************************************************
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
@@ -19,14 +20,13 @@ int acqua = D5;
 volatile boolean pubblicaAcqua = false;
 
 String msg;
-unsigned long now;
-unsigned long noww;
-
+const unsigned long RETRY_ROOT_INTERVAL = 1200000; // 20 minuti
+bool retryTaskEnabled = false; // Flag per il task di retry
 float t,h,p,a,td;
 #define SEALEVELPRESSURE_HPA (1013.25)
 Adafruit_BME280 bme; // I2C
 
-#include "namedMesh.h"
+#include "../namedmesh/namedMesh.h"
 
 #define   MESH_PREFIX     "whateverYouLike"
 #define   MESH_PASSWORD   "somethingSneaky"
@@ -40,15 +40,17 @@ String to = "bridgemqtt";
 uint32_t root_id = 0;
 
 #define ROLE    "cantina"
-#define VERSION "Cantina v3.0.2"
+#define VERSION "Cantina v3.1.0"
 #define MESSAGE "cantina "
 
 // User stub
 void sendMessage() ; // Prototype so PlatformIO doesn't complain
 void sendMessage1();
+void retryRoot();
 
 Task taskSendMessage( TASK_SECOND * 1 , TASK_FOREVER, &sendMessage );
 Task taskSendMessage1( TASK_SECOND * 1 , TASK_FOREVER, &sendMessage1 );
+Task retryRootTask(RETRY_ROOT_INTERVAL, TASK_ONCE, &retryRoot);
 
 void sendMessage() {
   read_bme280();
@@ -88,30 +90,42 @@ void newConnectionCallback(uint32_t nodeId) {
 }
 
 void changedConnectionCallback() {
-  Serial.printf("Changed connections\n");
+  Serial.println("changedConnectionCallback");
+  if (!mesh.isConnected(root_id)) {
+    Serial.println("Connessione al root persa! Pianifico il retry.");
+    if (!retryTaskEnabled) { // Controlla il flag
+      retryRootTask.enable();
+      retryTaskEnabled = true; // Imposta il flag
+    }
+  } else {
+    Serial.println("Connessione al root ripristinata.");
+    retryRootTask.disable();
+    retryTaskEnabled = false; // Resetta il flag
+  }}
+
+void nodeTimeAdjustedCallback(int32_t offset) {
+    Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
 }
 
 void nodeTimeAdjustedCallback(int32_t offset) {
     Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
 }
 
-void leggi_acqua()
-{
+void leggi_acqua() {
   pubblicaAcqua = true;
 }
 
-void read_dallas(){
+void read_dallas() {
   sensors.requestTemperatures();
   td=sensors.getTempCByIndex(0);
   if (isnan(td)) {
-          Serial.println("Failed to read from Dallas sensor!");
+          //Serial.println("Failed to read from Dallas sensor!");
           msg = "error/FailedtoreadfromDallasSensor";
           mesh.sendSingle(to, msg);
           return;
-        }}
+}}
 
-void update_status()
-{
+void update_status() {
    long uptime = millis() / 60000L;
   msg = "uptime/";
   msg += uptime;
@@ -137,17 +151,25 @@ void update_status()
 }
 
 void read_bme280() {
-
   h = bme.readHumidity();
   t = bme.readTemperature();
   p = bme.readPressure()/100;
   a = bme.readAltitude(SEALEVELPRESSURE_HPA);
   if (isnan(h) || isnan(t)) {
-          Serial.println("Failed to read from BME280 sensor!");
+          //Serial.println("Failed to read from BME280 sensor!");
           msg = "error/FailedtoreadfromBME280sensor";
           mesh.sendSingle(to, msg);
           return;
         }}
+
+void retryRoot() {
+  if (!mesh.isConnected(root_id)) {
+    Serial.println("Ancora offline dopo il retry. Riavvio...");
+    ESP.restart();
+  } else {
+    Serial.println("Root tornato online.");
+    retryTaskEnabled = false; // Resetta il flag anche qui, per sicurezza
+  }}
 
 void setup() {
   Serial.begin(115200);
@@ -157,7 +179,6 @@ void setup() {
 
 //mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
   mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
-
   mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 11 );
   mesh.initOTAReceive(ROLE);
   mesh.setContainsRoot(true);
@@ -183,11 +204,4 @@ void loop() {
     msg = "acqua/1";
     mesh.sendSingle(to, msg);
     pubblicaAcqua = false;
-  }
-  
-    if((millis() - now) > 600000) { //600000 - 2,5 min
-    now=millis();
-      if(!(mesh.isConnected(root_id))){
-        Serial.println("restart");
-        ESP.restart();
-    }}}
+  }}
