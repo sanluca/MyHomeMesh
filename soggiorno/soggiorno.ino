@@ -6,7 +6,7 @@
 // BME280 temperatura umidità pressione altitudine
 // pulsante 2
 // 
-//painlessmesh 1.5.4 arduinojson 7.0.4
+//painlessmesh 1.5.4 arduinojson 7.3.0
 //************************************************************
 #include "Button2.h"
 #include <Adafruit_Sensor.h>
@@ -23,6 +23,7 @@ Adafruit_BME280 bme; // I2C
 
 const byte relay_pin = 0;
 bool relayState = LOW;
+int relayStateSoggiorno = 0;
 
 Button2 btn1(BUTTON_1);
 //#include "painlessMesh.h"
@@ -41,7 +42,7 @@ String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "soggiorno"
-#define VERSION "Soggiorno v4.0.2"
+#define VERSION "Soggiorno v4.0.3"
 #define MESSAGE "soggiorno "
 
 // User stub
@@ -81,19 +82,21 @@ void receivedCallback( uint32_t from, String &msg ) {
   rel=msg;
   root_id=from;
 
- if (strcmp(rel.c_str(),"1") == 0){
+ if (strcmp(rel.c_str(),"1") == 0) {
       digitalWrite(relay_pin, HIGH);
       relayState = HIGH;
+      relayStateSoggiorno=1;
       msg = "output/1";
       mesh.sendSingle(to, msg);
 
-   }
+}
    else if (strcmp(rel.c_str(),"0") == 0) {
     digitalWrite(relay_pin, LOW);
     relayState = LOW;
+    relayStateSoggiorno=0;
     msg = "output/0";
     mesh.sendSingle(to, msg);
- } }
+}}
 
 void newConnectionCallback(uint32_t nodeId) {
     Serial.printf("--> startHere: New Connection, nodeId = %u\n", nodeId);
@@ -106,12 +109,12 @@ void changedConnectionCallback() {
     if (!retryTaskEnabled) { // Controlla il flag
       retryRootTask.enable();
       retryTaskEnabled = true; // Imposta il flag
-    }
+}
   } else {
     Serial.println("Connessione al root ripristinata.");
     retryRootTask.disable();
     retryTaskEnabled = false; // Resetta il flag
-  }}
+}}
 
 void nodeTimeAdjustedCallback(int32_t offset) {
     Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
@@ -127,7 +130,7 @@ void read_bme280() {
           msg = "error/FailedtoreadfromBMEsensor";
           mesh.sendSingle(to, msg);
           return;
-        } }
+}}
 
 void button_setup() {
   btn1.setPressedHandler([](Button2 & b) 
@@ -137,10 +140,12 @@ void button_setup() {
       if (relayState == HIGH){
         msg = "output/1";
         mesh.sendSingle(to, msg);
+        relayStateSoggiorno=1;
      }
       else if (relayState == LOW){
         msg = "output/0";
         mesh.sendSingle(to, msg);
+        relayStateSoggiorno=0;
      }
     });
 }
@@ -168,6 +173,12 @@ void update_status() {
   msg = "wifisignal/";
   msg += String(WiFi.RSSI());
   mesh.sendSingle(to, msg);
+  msg = "output/";
+  msg += relayStateSoggiorno;
+  mesh.sendSingle(to, msg);
+  msg = "outputsss/";
+  msg += relayState;
+  mesh.sendSingle(to, msg);
 }
 
 void retryRoot() {
@@ -185,7 +196,7 @@ void setup() {
   bme.begin(0x77);
   pinMode(relay_pin, OUTPUT);
 //mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
-  mesh.setDebugMsgTypes( ERROR | STARTUP | DEBUG );  // set before init() so that you can see startup messages
+  mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
   mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 11 );
   mesh.initOTAReceive(ROLE);
   mesh.setContainsRoot(true);

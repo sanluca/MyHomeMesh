@@ -165,7 +165,7 @@ void setup() {
   //scale.wait_ready();
 
   //mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
-  mesh.setDebugMsgTypes( ERROR | STARTUP | DEBUG );  // set before init() so that you can see startup messages
+  mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
   mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 11 );
 
   mesh.initOTAReceive(ROLE);

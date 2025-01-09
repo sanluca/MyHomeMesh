@@ -1,6 +1,6 @@
 //************************************************************
 //DOIT ESP32 DEVKIT V1
-//painlessmesh 1.5.4 arduinojson 7.0.4
+//painlessmesh 1.5.4 arduinojson 6.21.5
 #include <Arduino.h>
 //#include <painlessMesh.h>
 #include "../namedmesh/namedMesh.h"
@@ -60,8 +60,8 @@ void sendMessage1() {
 void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true); 
-  mesh.setDebugMsgTypes( ERROR | STARTUP | CONNECTION | DEBUG | MESH_STATUS | SYNC | COMMUNICATION | GENERAL | REMOTE | MSG_TYPES );  // set before init() so that you can see startup messages
-  //mesh.setDebugMsgTypes( ERROR | STARTUP ); 
+  //mesh.setDebugMsgTypes( ERROR | STARTUP | CONNECTION | DEBUG | MESH_STATUS | SYNC | COMMUNICATION | GENERAL | REMOTE | MSG_TYPES );  // set before init() so that you can see startup messages
+  mesh.setDebugMsgTypes( ERROR | STARTUP ); 
   mesh.init( MESH_PREFIX, MESH_PASSWORD, MESH_PORT, WIFI_AP_STA, 11 );
   mesh.initOTAReceive(ROLE);
   mesh.setRoot(true);

@@ -8,7 +8,7 @@
 // pulsante D5-->2 cucina
 // pulsante D6-->3 ingresso
 // 
-//painlessmesh 1.5.4 arduinojson 7.0.4
+//painlessmesh 1.5.4 arduinojson 7.3.0
 //************************************************************
 #include "Button2.h"
 #include <AHTxx.h>
@@ -22,13 +22,15 @@ int relay_ingresso = 1;
 int relay_cucina = 0;
 bool relayState = LOW;
 bool relayState1 = LOW;
+int relayStateCucina = 0; // Inizializzato a 0 (spento)
+int relayStateIngresso = 0; // Inizializzato a 0 (spento)
 
 AHTxx aht20(AHTXX_ADDRESS_X38, AHT2x_SENSOR);
 
 Button2 btn1(BUTTON_1);
 Button2 btn2(BUTTON_2);
 //#include "painlessMesh.h"
-#include "namedMesh.h"
+#include "../namedmesh/namedMesh.h"
 
 #define   MESH_PREFIX     "whateverYouLike"
 #define   MESH_PASSWORD   "somethingSneaky"
@@ -43,7 +45,7 @@ String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "cucina"
-#define VERSION "Cucina v4.0.1"
+#define VERSION "Cucina v4.0.3"
 #define MESSAGE "cucina "
 
 // User stub
@@ -80,6 +82,7 @@ void receivedCallback( uint32_t from, String &msg ) {
    if (strcmp(rel.c_str(),"1") == 0){
       digitalWrite(relay_cucina, LOW);
       relayState = LOW;
+      relayStateCucina=1;
       msg = "output/";
       msg += "1";
       mesh.sendSingle(to, msg);
@@ -87,6 +90,7 @@ void receivedCallback( uint32_t from, String &msg ) {
       else if (strcmp(rel.c_str(),"2") == 0) {
         digitalWrite(relay_cucina, HIGH);
         relayState = HIGH;
+        relayStateCucina=2;
         msg = "output/";
       msg += "2";
       mesh.sendSingle(to, msg);
@@ -95,6 +99,7 @@ void receivedCallback( uint32_t from, String &msg ) {
    else if (strcmp(rel.c_str(),"3") == 0) {
     digitalWrite(relay_ingresso, LOW);
     relayState1 = LOW;
+    relayStateIngresso=3;
     msg = "output/";
       msg += "3";
       mesh.sendSingle(to, msg);
@@ -102,9 +107,10 @@ void receivedCallback( uint32_t from, String &msg ) {
   else if (strcmp(rel.c_str(),"4") == 0) {
     digitalWrite(relay_ingresso, HIGH);
     relayState1 = HIGH;
+    relayStateIngresso=4;
     msg = "output/";
-      msg += "4";
-      mesh.sendSingle(to, msg);
+    msg += "4";
+    mesh.sendSingle(to, msg);
   } 
 
   else if (strcmp(rel.c_str(),"0") == 0) {
@@ -112,6 +118,8 @@ void receivedCallback( uint32_t from, String &msg ) {
     digitalWrite(relay_ingresso, LOW);
     relayState1 = LOW;
     relayState = LOW;
+    relayStateIngresso=0;
+    relayStateCucina=0;
     msg = "output/";
     msg += "0";
     mesh.sendSingle(to, msg);
@@ -133,7 +141,7 @@ void changedConnectionCallback() {
     Serial.println("Connessione al root ripristinata.");
     retryRootTask.disable();
     retryTaskEnabled = false; // Resetta il flag
-  }}
+}}
 
 void nodeTimeAdjustedCallback(int32_t offset) {
     Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
@@ -146,7 +154,7 @@ void read_AHT() {
           msg = "error/Failed to read from AHT sensor!";
           mesh.sendSingle(to, msg);
           return;
-        }}
+}}
 
 void button_setup() {
   btn1.setPressedHandler([](Button2 & b) 
@@ -156,12 +164,14 @@ void button_setup() {
      if (relayState == HIGH){
       msg = "output/2";
       mesh.sendSingle(to, msg);
+      relayStateCucina=2;
      }
      else if (relayState == LOW){
       msg = "output/1";
       mesh.sendSingle(to, msg);
-     }
-    });
+      relayStateCucina=1;
+}
+});
 
   btn2.setPressedHandler([](Button2 & b) {
     relayState1 = !relayState1;
@@ -169,12 +179,14 @@ void button_setup() {
      if (relayState1 == HIGH){
       msg = "output/4";
       mesh.sendSingle(to, msg);
+      relayStateIngresso=4;
      }
      else if (relayState1 == LOW){
       msg = "output/3";
       mesh.sendSingle(to, msg);
-     }
-    });
+      relayStateIngresso=3;
+}
+});
 }
 
 void update_status() {
@@ -200,6 +212,12 @@ void update_status() {
   msg = "wifisignal/";
   msg += String(WiFi.RSSI());
   mesh.sendSingle(to, msg);
+  msg = "output/";
+  msg += relayStateCucina;
+  mesh.sendSingle(to, msg);
+  msg = "output/";
+  msg += relayStateIngresso;
+  mesh.sendSingle(to, msg);
 }
 
 void retryRoot() {
@@ -209,8 +227,7 @@ void retryRoot() {
   } else {
     Serial.println("Root tornato online.");
     retryTaskEnabled = false; // Resetta il flag anche qui, per sicurezza
-  }
-}
+}}
 
 void setup() {
   Serial.begin(115200);
@@ -218,8 +235,8 @@ void setup() {
   pinMode(relay_ingresso, OUTPUT);
   pinMode(relay_cucina, OUTPUT);
 
-  mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
-  //mesh.setDebugMsgTypes( ERROR | STARTUP | DEBUG );  // set before init() so that you can see startup messages
+  //mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
+  mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
   mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 11 );
   mesh.initOTAReceive(ROLE);
   mesh.setContainsRoot(true); 

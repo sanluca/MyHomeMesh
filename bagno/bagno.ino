@@ -14,7 +14,7 @@ const unsigned long RETRY_ROOT_INTERVAL = 1200000; // 20 minuti
 bool retryTaskEnabled = false; // Flag per il task di retry
 AHTxx aht20(AHTXX_ADDRESS_X38, AHT2x_SENSOR);
 #define BUTTON_1        0
-int relay_luce = 4;
+int relay = 4;
 bool relayState = LOW;
 
 Button2 btn1(BUTTON_1);
@@ -71,13 +71,13 @@ void receivedCallback( uint32_t from, String &msg ) {
   root_id=from;
 
    if (strcmp(rel.c_str(),"1") == 0){
-      digitalWrite(relay_luce, HIGH);   
+      digitalWrite(relay, HIGH);   
       relayState = HIGH;
       msg = "output/1";
       mesh.sendSingle(to, msg);
    }
       else if (strcmp(rel.c_str(),"0") == 0) {
-        digitalWrite(relay_luce, LOW);   
+        digitalWrite(relay, LOW);   
         relayState = LOW;
         msg = "output/0";
       mesh.sendSingle(to, msg);
@@ -119,7 +119,7 @@ void read_AHT() {
 void button_setup() {
    btn1.setPressedHandler([](Button2 & b) {
       relayState = !relayState;
-      digitalWrite(relay_luce,relayState);
+      digitalWrite(relay,relayState);
     if (relayState == HIGH){
       msg = "output/1";
       mesh.sendSingle(to, msg);
@@ -168,7 +168,7 @@ void retryRoot() {
 void setup() {
   Serial.begin(115200);
   aht20.begin();
-  pinMode(relay_luce, OUTPUT);
+  pinMode(relay, OUTPUT);
 
 //mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
   mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages

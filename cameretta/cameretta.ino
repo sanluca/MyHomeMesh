@@ -4,7 +4,7 @@
 // rele D3 --> 3
 // pulsante D5-->0
 // AHT20
-// painlessmesh 1.5.4 arduinojson 7.0.4
+// painlessmesh 1.5.4 arduinojson 6.21.5
 //************************************************************
 #include "Button2.h"
 #include <AHTxx.h>
@@ -16,10 +16,11 @@ AHTxx aht20(AHTXX_ADDRESS_X38, AHT2x_SENSOR);
 #define BUTTON_1        0
 int relay = 4;
 bool relayState = LOW;
+int relayStateCameretta = 0;
 
 Button2 btn1(BUTTON_1);
 //#include "painlessMesh.h"
-#include "namedMesh.h"
+#include "../namedmesh/namedMesh.h"
 
 #define   MESH_PREFIX     "whateverYouLike"
 #define   MESH_PASSWORD   "somethingSneaky"
@@ -34,7 +35,7 @@ String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "cameretta"
-#define VERSION "Cameretta v4.0.6"
+#define VERSION "Cameretta v4.0.7"
 #define MESSAGE "cameretta "
 
 // User stub
@@ -71,12 +72,14 @@ void receivedCallback( uint32_t from, String &msg ) {
     if (strcmp(rel.c_str(),"1") == 0){
       digitalWrite(relay, HIGH);
       relayState = HIGH;
+      relayStateCameretta = 1;
       msg = "output/1";
       mesh.sendSingle(to, msg);
     }
     else if (strcmp(rel.c_str(),"0") == 0) {
       digitalWrite(relay, LOW);
       relayState = LOW;
+      relayStateCameretta = 0;
       msg = "output/0";
       mesh.sendSingle(to, msg);
   }}
@@ -111,10 +114,12 @@ void button_setup()//(Button2& btn)
     if (relayState == HIGH){
       msg = "output/1";
       mesh.sendSingle(to, msg);
+      relayStateCameretta = 1;
      }
     else if (relayState == LOW){
       msg = "output/0";
       mesh.sendSingle(to, msg);
+      relayStateCameretta = 0;
      }
     });
 }
@@ -152,6 +157,9 @@ void update_status() {
   msg = "wifisignal/";
   msg += String(WiFi.RSSI());
   mesh.sendSingle(to, msg);
+  msg = "output/";
+  msg += relayStateCameretta;
+  mesh.sendSingle(to, msg);
 }
 
 void retryRoot() {
@@ -168,7 +176,7 @@ void setup() {
   aht20.begin();
   pinMode(relay, OUTPUT);
 
-  mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
+  //mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
   //mesh.setDebugMsgTypes( ERROR | STARTUP | DEBUG );  // set before init() so that you can see startup messages
   mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 11 );
   mesh.initOTAReceive(ROLE);

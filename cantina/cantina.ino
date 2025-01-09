@@ -1,22 +1,22 @@
 //************************************************************
-// cantina wemos d1 mini pro
+// cantina ESP32C3 Dev Module
 //BME280 temperatura umidità pressione altitudine
-// ds18b20 su D6
-// leggi acqua D5
+// ds18b20 su D6 esp32 8
+// leggi acqua D5 esp32 0
 //
-// painlessmesh 1.5.4 arduinojson 7.0.4
+// painlessmesh 1.5.4 arduinojson 7.3.0
 //************************************************************
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #include <Wire.h>
 #include <OneWire.h> 
 #include <DallasTemperature.h>
-#define ONE_WIRE_BUS D6
-OneWire oneWire(ONE_WIRE_BUS);
+OneWire oneWire(21);
 DallasTemperature sensors(&oneWire);
 
-void ICACHE_RAM_ATTR leggi_acqua();
-int acqua = D5;
+//void ICACHE_RAM_ATTR leggi_acqua();
+void IRAM_ATTR leggi_acqua();
+int acqua = 0;
 volatile boolean pubblicaAcqua = false;
 
 String msg;
@@ -40,7 +40,7 @@ String to = "bridgemqtt";
 uint32_t root_id = 0;
 
 #define ROLE    "cantina"
-#define VERSION "Cantina v3.1.0"
+#define VERSION "Cantina v4.0.1"
 #define MESSAGE "cantina "
 
 // User stub
@@ -54,29 +54,28 @@ Task retryRootTask(RETRY_ROOT_INTERVAL, TASK_ONCE, &retryRoot);
 
 void sendMessage() {
   read_bme280();
-  read_dallas();
   msg = "temperatura/";
   msg += t;
-  mesh.sendSingle(to, msg);
-  msg = "pressione/";
-  msg += p;
   mesh.sendSingle(to, msg);
   msg = "umidita/";
   msg += h;
   mesh.sendSingle(to, msg);
-  msg = "temperaturad/";
-  msg += td;
+  msg = "pressione/";
+  msg += p;
   mesh.sendSingle(to, msg);
   msg = "altitudine/";
   msg += a;
   mesh.sendSingle(to, msg);
- 
-  taskSendMessage.setInterval( random( TASK_SECOND * 300, TASK_SECOND * 400 ));
+  read_dallas();
+  msg = "temperaturad/";
+  msg += td;
+  mesh.sendSingle(to, msg);
+  taskSendMessage.setInterval( random( TASK_SECOND * 400, TASK_SECOND * 500 ));
 }
 
 void sendMessage1() {
   update_status();
-  taskSendMessage1.setInterval( random( TASK_SECOND * 450, TASK_SECOND * 550 ));
+  taskSendMessage1.setInterval( random( TASK_SECOND * 600, TASK_SECOND * 700 ));
 }
 
 // Needed for painless library
@@ -101,11 +100,7 @@ void changedConnectionCallback() {
     Serial.println("Connessione al root ripristinata.");
     retryRootTask.disable();
     retryTaskEnabled = false; // Resetta il flag
-  }}
-
-void nodeTimeAdjustedCallback(int32_t offset) {
-    Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
-}
+}}
 
 void nodeTimeAdjustedCallback(int32_t offset) {
     Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
@@ -160,7 +155,7 @@ void read_bme280() {
           msg = "error/FailedtoreadfromBME280sensor";
           mesh.sendSingle(to, msg);
           return;
-        }}
+}}
 
 void retryRoot() {
   if (!mesh.isConnected(root_id)) {
@@ -169,10 +164,11 @@ void retryRoot() {
   } else {
     Serial.println("Root tornato online.");
     retryTaskEnabled = false; // Resetta il flag anche qui, per sicurezza
-  }}
+}}
 
 void setup() {
   Serial.begin(115200);
+  pinMode( 21, INPUT );
   bme.begin(0x77);
   sensors.begin();
   pinMode(acqua, INPUT);
@@ -204,4 +200,4 @@ void loop() {
     msg = "acqua/1";
     mesh.sendSingle(to, msg);
     pubblicaAcqua = false;
-  }}
+}}

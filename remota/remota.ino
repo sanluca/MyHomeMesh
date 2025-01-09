@@ -4,7 +4,7 @@
 //
 // pioggia 0
 //
-// painlessmesh 1.5.4 arduinojson 7.0.4
+// painlessmesh 1.5.4 arduinojson 7.3.0
 //************************************************************
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
@@ -35,7 +35,7 @@ String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "remota"
-#define VERSION "Remota v3.1.0"
+#define VERSION "Remota v3.1.2"
 #define MESSAGE "remota "
 
 // User stub
@@ -91,7 +91,7 @@ void changedConnectionCallback() {
     Serial.println("Connessione al root ripristinata.");
     retryRootTask.disable();
     retryTaskEnabled = false; // Resetta il flag
-  }}
+}}
 
 void nodeTimeAdjustedCallback(int32_t offset) {
     Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
@@ -107,7 +107,7 @@ void read_bme280() {
           msg = "error/FailedtoreadfromBMEsensor";
           mesh.sendSingle(to, msg);
           return;
-        }}
+}}
 
 void leggi_pioggia() {
   pubblicaPioggia = true;
@@ -145,7 +145,7 @@ void retryRoot() {
   } else {
     Serial.println("Root tornato online.");
     retryTaskEnabled = false; // Resetta il flag anche qui, per sicurezza
-  }}
+}}
 
 void setup() {
   Serial.begin(115200);
@@ -178,4 +178,4 @@ void loop() {
     msg = "pioggia/1";
     mesh.sendSingle(to, msg);
     pubblicaPioggia = false;
-  }}
+}}
