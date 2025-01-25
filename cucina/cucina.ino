@@ -8,18 +8,18 @@
 // pulsante D5-->2 cucina
 // pulsante D6-->3 ingresso
 // 
-//painlessmesh 1.5.4 arduinojson 7.3.0
+//painlessmesh 1.5.4 arduinojson 6.21.5 esp32 3.0.7
 //************************************************************
 #include "Button2.h"
 #include <AHTxx.h>
 float h,t;
 const unsigned long RETRY_ROOT_INTERVAL = 1200000; // 20 minuti
 bool retryTaskEnabled = false; // Flag per il task di retry
-#define BUTTON_1        2
-#define BUTTON_2        3
+#define BUTTON_1        0
+#define BUTTON_2        1
 
-int relay_ingresso = 1;
-int relay_cucina = 0;
+int relay_ingresso = 3;
+int relay_cucina = 4;
 bool relayState = LOW;
 bool relayState1 = LOW;
 int relayStateCucina = 0; // Inizializzato a 0 (spento)
@@ -45,7 +45,7 @@ String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "cucina"
-#define VERSION "Cucina v4.0.3"
+#define VERSION "Cucina v4.0.4"
 #define MESSAGE "cucina "
 
 // User stub
@@ -83,45 +83,40 @@ void receivedCallback( uint32_t from, String &msg ) {
       digitalWrite(relay_cucina, LOW);
       relayState = LOW;
       relayStateCucina=1;
-      msg = "output/";
-      msg += "1";
+      msg = "output/1";
       mesh.sendSingle(to, msg);
    }
       else if (strcmp(rel.c_str(),"2") == 0) {
         digitalWrite(relay_cucina, HIGH);
         relayState = HIGH;
         relayStateCucina=2;
-        msg = "output/";
-      msg += "2";
-      mesh.sendSingle(to, msg);
+        msg = "output/2";
+        mesh.sendSingle(to, msg);
     }
   
    else if (strcmp(rel.c_str(),"3") == 0) {
     digitalWrite(relay_ingresso, LOW);
     relayState1 = LOW;
     relayStateIngresso=3;
-    msg = "output/";
-      msg += "3";
-      mesh.sendSingle(to, msg);
+    msg = "output/3";
+    mesh.sendSingle(to, msg);
   } 
   else if (strcmp(rel.c_str(),"4") == 0) {
     digitalWrite(relay_ingresso, HIGH);
     relayState1 = HIGH;
     relayStateIngresso=4;
-    msg = "output/";
-    msg += "4";
+    msg = "output/4";
     mesh.sendSingle(to, msg);
   } 
 
   else if (strcmp(rel.c_str(),"0") == 0) {
     digitalWrite(relay_cucina, LOW);
     digitalWrite(relay_ingresso, LOW);
-    relayState1 = LOW;
     relayState = LOW;
+    relayState1 = LOW;
     relayStateIngresso=0;
     relayStateCucina=0;
-    msg = "output/";
-    msg += "0";
+    msg = "output/0";
     mesh.sendSingle(to, msg);
   }}
 
@@ -151,9 +146,9 @@ void read_AHT() {
   h = aht20.readHumidity();
   t = aht20.readTemperature();
   if (isnan(h) || isnan(t)) {
-          msg = "error/Failed to read from AHT sensor!";
-          mesh.sendSingle(to, msg);
-          return;
+    msg = "error/Failed to read from AHT sensor!";
+    mesh.sendSingle(to, msg);
+    return;
 }}
 
 void button_setup() {

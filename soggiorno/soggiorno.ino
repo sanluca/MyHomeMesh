@@ -6,7 +6,7 @@
 // BME280 temperatura umidità pressione altitudine
 // pulsante 2
 // 
-//painlessmesh 1.5.4 arduinojson 7.3.0
+//painlessmesh 1.5.4 arduinojson 6.21.5 esp32 3.0.7
 //************************************************************
 #include "Button2.h"
 #include <Adafruit_Sensor.h>
