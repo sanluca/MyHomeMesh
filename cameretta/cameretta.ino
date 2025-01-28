@@ -4,7 +4,7 @@
 // rele D3 --> 3
 // pulsante D5-->0
 // AHT20
-// painlessmesh 1.5.4 arduinojson 6.21.5
+// painlessmesh 1.5.4 arduinojson 6.21.5 esp32 ?
 //************************************************************
 #include "Button2.h"
 #include <AHTxx.h>
@@ -55,7 +55,6 @@ void sendMessage() {
   msg = "umidita/";
   msg += h;
   mesh.sendSingle(to, msg);
-
   taskSendMessage.setInterval( random( TASK_SECOND * 300, TASK_SECOND * 400 ));
 }
 
@@ -100,7 +99,7 @@ void changedConnectionCallback() {
     Serial.println("Connessione al root ripristinata.");
     retryRootTask.disable();
     retryTaskEnabled = false; // Resetta il flag
-  }}
+}}
 
 void nodeTimeAdjustedCallback(int32_t offset) {
     Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
@@ -121,18 +120,16 @@ void button_setup()//(Button2& btn)
       mesh.sendSingle(to, msg);
       relayStateCameretta = 0;
      }
-    });
-}
+    });}
 
 void read_AHT() {
   h = aht20.readHumidity();
   t = aht20.readTemperature();
   if (isnan(h) || isnan(t)) {
-          //Serial.println("Failed to read from DHT sensor!");
           msg = "error/Failed to read from AHT sensor!";
           mesh.sendSingle(to, msg);
           return;
-        }}
+}}
 
 void update_status() {
   long uptime = millis() / 60000L;
@@ -169,7 +166,7 @@ void retryRoot() {
   } else {
     Serial.println("Root tornato online.");
     retryTaskEnabled = false; // Resetta il flag anche qui, per sicurezza
-  }}
+}}
 
 void setup() {
   Serial.begin(115200);
@@ -177,7 +174,7 @@ void setup() {
   pinMode(relay, OUTPUT);
 
   //mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
-  //mesh.setDebugMsgTypes( ERROR | STARTUP | DEBUG );  // set before init() so that you can see startup messages
+  mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
   mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 11 );
   mesh.initOTAReceive(ROLE);
   mesh.setContainsRoot(true);

@@ -4,7 +4,7 @@
 // rele  4
 // pulsante 0
 // Si7005
-//painlessmesh 1.5.4 arduinojson 7.0.4
+//painlessmesh 1.5.3 arduinojson 6.21.5 esp32 3.0.7
 //************************************************************
 #include "Button2.h"
 #include <Wire.h>
@@ -20,9 +20,10 @@ bool retryTaskEnabled = false; // Flag per il task di retry
 int relay = 4;
 bool relayState = LOW;
 
-Button2 button1;
+//Button2 button1;
+Button2 btn1(BUTTON_1);
 //#include "painlessMesh.h"
-#include "namedMesh.h"
+#include "../namedmesh/namedMesh.h"
 
 #define   MESH_PREFIX     "whateverYouLike"
 #define   MESH_PASSWORD   "somethingSneaky"
@@ -37,7 +38,7 @@ String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "camera"
-#define VERSION "Camera v4.0.6"
+#define VERSION "Camera v4.0.7"
 #define MESSAGE "camera "
 
 // User stub
@@ -99,14 +100,16 @@ void changedConnectionCallback() {
     Serial.println("Connessione al root ripristinata.");
     retryRootTask.disable();
     retryTaskEnabled = false; // Resetta il flag
-  }}
+}}
 
 void nodeTimeAdjustedCallback(int32_t offset) {
     Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
 }
 
-void button_setup(Button2& btn){
-      if (btn == button1){
+//void button_setup(Button2& btn){
+void button_setup() {
+  btn1.setPressedHandler([](Button2 & b) {
+     // if (btn == button1){
       relayState = !relayState;
       digitalWrite(relay,relayState);
     if (relayState == HIGH){
@@ -116,8 +119,7 @@ void button_setup(Button2& btn){
     else if (relayState == LOW){
       msg = "output/0";
       mesh.sendSingle(to, msg);
-     }
-}}
+     }});}
 
 void read_SI7005() {
   if (Si.detectSensor()) {
@@ -128,11 +130,9 @@ void read_SI7005() {
       msg = "error/Failed to read from SI7005 sensor!";
       mesh.sendSingle(to, msg);
       return;
-    }
-}
+    }}
 
-void update_status()
-{
+void update_status() {
   long uptime = millis() / 60000L;
   msg = "uptime/";
   msg += uptime;
@@ -164,8 +164,7 @@ void retryRoot() {
   } else {
     Serial.println("Root tornato online.");
     retryTaskEnabled = false; // Resetta il flag anche qui, per sicurezza
-  }
-}
+  }}
 
 void setup() {
   Serial.begin(115200);
@@ -174,7 +173,7 @@ void setup() {
   digitalWrite(relay,LOW);
 
   //mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
-  mesh.setDebugMsgTypes( ERROR | STARTUP | DEBUG );  // set before init() so that you can see startup messages
+  mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
 
   mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 11 );
   mesh.initOTAReceive(ROLE);
@@ -190,12 +189,14 @@ void setup() {
   taskSendMessage.enable();
   taskSendMessage1.enable();
 
-  button1.begin(BUTTON_1);
-  button1.setClickHandler(button_setup);
+  //button1.begin(BUTTON_1);
+  //button1.setClickHandler(button_setup);
+  button_setup();
 }
 
 void loop() {
   // it will run the user scheduler as well
   mesh.update();
-  button1.loop();
+  //button1.loop();
+  btn1.loop();
 }

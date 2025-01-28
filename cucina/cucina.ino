@@ -8,7 +8,7 @@
 // pulsante D5-->2 cucina
 // pulsante D6-->3 ingresso
 // 
-//painlessmesh 1.5.4 arduinojson 6.21.5 esp32 3.0.7
+//painlessmesh 1.5.3 arduinojson 6.21.5 esp32 3.0.7
 //************************************************************
 #include "Button2.h"
 #include <AHTxx.h>
@@ -45,7 +45,7 @@ String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "cucina"
-#define VERSION "Cucina v4.0.4"
+#define VERSION "Cucina v4.0.5"
 #define MESSAGE "cucina "
 
 // User stub
@@ -152,8 +152,7 @@ void read_AHT() {
 }}
 
 void button_setup() {
-  btn1.setPressedHandler([](Button2 & b) 
-    {
+  btn1.setPressedHandler([](Button2 & b) {
     relayState = !relayState;
      digitalWrite(relay_cucina,relayState);
      if (relayState == HIGH){
@@ -165,8 +164,7 @@ void button_setup() {
       msg = "output/1";
       mesh.sendSingle(to, msg);
       relayStateCucina=1;
-}
-});
+}});
 
   btn2.setPressedHandler([](Button2 & b) {
     relayState1 = !relayState1;
@@ -180,9 +178,7 @@ void button_setup() {
       msg = "output/3";
       mesh.sendSingle(to, msg);
       relayStateIngresso=3;
-}
-});
-}
+}});}
 
 void update_status() {
   long uptime = millis() / 60000L;

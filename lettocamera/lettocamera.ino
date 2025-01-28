@@ -1,9 +1,9 @@
 //************************************************************
 // lettura presenza nel letto con HX711
 // wemos d1 mini 
-// painlessmesh 1.5.4
+// painlessmesh 1.5.3
 // esp8266 3.1.2
-// arduinojson 7.0.4
+// arduinojson 6.21.5
 //************************************************************
 #include <HX711.h>
 // HX711 Pins
@@ -33,7 +33,7 @@ String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "lettocamera"
-#define VERSION "LettoCamera v3.0.0"
+#define VERSION "LettoCamera v3.0.1"
 #define MESSAGE "lettocamera "
 
 // User stub
