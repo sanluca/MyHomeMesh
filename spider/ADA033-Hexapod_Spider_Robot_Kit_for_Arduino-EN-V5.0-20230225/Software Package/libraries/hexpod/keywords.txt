@@ -1,0 +1,20 @@
+#class	(KEYWORD1)
+QUANRUPED	KEYWORD1
+
+#FUNCTION AND METHOD(KEYWORD2)
+servo_attach	KEYWORD2
+moveforward	KEYWORD2
+servo_attach	KEYWORD2
+movebackward	KEYWORD2
+turnright	KEYWORD2
+turnleft	KEYWORD2
+self_balanced_test	KEYWORD2
+battery	KEYWORD2
+advoid	KEYWORD2
+self_balanced_setup	KEYWORD2
+self_balanced	KEYWORD2
+read_mpu_6050_data	KEYWORD2
+setup_mpu_6050_registers	KEYWORD2
+ultrasonic	KEYWORD2
+strip_begin	KEYWORD2
+servo_init	KEYWORD2

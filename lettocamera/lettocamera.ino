@@ -33,7 +33,7 @@ String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "lettocamera"
-#define VERSION "LettoCamera v3.0.1"
+#define VERSION "LettoCamera v3.0.2"
 #define MESSAGE "lettocamera "
 
 // User stub

@@ -5,7 +5,7 @@
 //SHT30 i2c D1 D2
 //pin salita D0 --> 16
 //pin discesa D7 --> 13
-//painlessmesh 1.5.4 arduinojson 7.0.4
+//painlessmesh 1.5.3 arduinojson 6.21.5 esp32 3.0.7
 //
 //************************************************************
 #include <Wire.h>

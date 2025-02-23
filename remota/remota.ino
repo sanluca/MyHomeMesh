@@ -4,7 +4,7 @@
 //
 // pioggia 0
 //
-// painlessmesh 1.5.4 arduinojson 7.3.0
+// painlessmesh 1.5.3 arduinojson 6.21.5 esp32 3.0.7
 //************************************************************
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
@@ -152,8 +152,8 @@ void setup() {
   bme.begin(0x77);
   pinMode(pioggia, INPUT);
   
-  mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
-  //mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
+  //mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
+  mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
   mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 11 );
   mesh.initOTAReceive(ROLE);
   mesh.setContainsRoot(true);

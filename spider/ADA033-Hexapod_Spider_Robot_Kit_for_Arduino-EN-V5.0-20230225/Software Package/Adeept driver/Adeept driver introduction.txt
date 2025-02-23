@@ -1,0 +1,20 @@
+CH341SER.EXE:
+CH340/CH341USB to serial port WINDOWS driver, support 32/64 bit Windows 10/8.1/8/7/VISTA/XP, SERVER 2016/2012/2008/2003, 2000/ME/98, Microsoft digital signature authentication, support USB Transfer to 3-wire and 9-wire serial ports for distribution to end users.
+
+
+
+CH341SER_ANDROID.ZIP:
+CH340/CH341 USB to serial port Android free drive application library, for Android OS 3.1 and above version of USB Host mode, no need to load Android kernel driver, no root privileges. Contains apk installer, lib library file (Java Driver), App Demo routine (USB to UART Demo project SDK).
+
+
+
+CH341SER_LINUX.ZIP
+CH340/CH341 USB to serial LINUX driver, support 32/64 bit system.
+
+
+
+
+CH341SER_MAC.ZIP
+CH340/CH341 USB to serial MAC OS driver, support 32/64 bit system, there are instructions for use.
+
+

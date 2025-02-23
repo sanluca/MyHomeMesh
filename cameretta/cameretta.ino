@@ -4,7 +4,7 @@
 // rele D3 --> 3
 // pulsante D5-->0
 // AHT20
-// painlessmesh 1.5.4 arduinojson 6.21.5 esp32 ?
+// painlessmesh 1.5.3 arduinojson 6.21.5 esp32 3.0.7
 //************************************************************
 #include "Button2.h"
 #include <AHTxx.h>
@@ -35,7 +35,7 @@ String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "cameretta"
-#define VERSION "Cameretta v4.0.7"
+#define VERSION "Cameretta v4.0.8"
 #define MESSAGE "cameretta "
 
 // User stub
@@ -81,7 +81,7 @@ void receivedCallback( uint32_t from, String &msg ) {
       relayStateCameretta = 0;
       msg = "output/0";
       mesh.sendSingle(to, msg);
-  }}
+}}
 
 void newConnectionCallback(uint32_t nodeId) {
     Serial.printf("--> startHere: New Connection, nodeId = %u\n", nodeId);
@@ -120,7 +120,7 @@ void button_setup()//(Button2& btn)
       mesh.sendSingle(to, msg);
       relayStateCameretta = 0;
      }
-    });}
+});}
 
 void read_AHT() {
   h = aht20.readHumidity();
