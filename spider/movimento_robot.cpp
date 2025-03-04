@@ -51,6 +51,7 @@ void riposo() {
 }
 
 void avanti() {
+  delay(tempoPausa);
   servo2.write(45);
   delay(tempoPausa);
   servo3.write(135);
@@ -109,9 +110,11 @@ void avanti() {
   servo9.write(90);
   servo5.write(90);
   servo13.write(90);
+  delay(tempoPausa);
 }
 
 void indietro() {
+  delay(tempoPausa);
   // zampa 1sx indietro
   servo2.write(45);
   delay(tempoPausa);
@@ -171,9 +174,11 @@ void indietro() {
   servo9.write(90);
   servo5.write(90);
   servo13.write(90);
+  delay(tempoPausa);
 }
 
-void testa_bassa() {   
+void testa_bassa() {  
+  delay(tempoPausa); 
   servo2.write(45);
   servo3.write(90);
   servo4.write(90);
@@ -186,10 +191,12 @@ void testa_bassa() {
   servo11.write(90);
   servo12.write(90);
   servo13.write(90);
+  delay(tempoPausa);
 
 }
 
 void gira_a_sinistra() {
+  delay(tempoPausa);
   //zampa 1sx indietro
   servo2.write(45);
   delay(tempoPausa);
@@ -244,10 +251,12 @@ void gira_a_sinistra() {
   servo11.write(90);
   servo12.write(90);
   servo13.write(90);
+  delay(tempoPausa);
 
 }
 
 void gira_a_destra() {
+  delay(tempoPausa);
   //zampa 1sx avanti
   servo2.write(45);
   delay(tempoPausa);
@@ -303,16 +312,23 @@ void gira_a_destra() {
   servo11.write(90);
   servo12.write(90);
   servo13.write(90);
+  delay(tempoPausa);
 }
 
 void testa_destra() {
+  delay(tempoPausa);
   servo14.write(45);
+  delay(tempoPausa);
 }
 
 void testa_sinistra() {
+  delay(tempoPausa);
   servo14.write(135);
+  delay(tempoPausa);
 }
 
 void testa_dritta() {
+  delay(tempoPausa);
   servo14.write(90);
+  delay(tempoPausa);
 }

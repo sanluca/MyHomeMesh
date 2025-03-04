@@ -1,5 +1,6 @@
 //spider adeept ADA033-V5.0
 //moficare servo.h in 13 servo per timer
+#define NUM_CAMPIONI 5 // Numero di letture per media mobile
 #include "movimento_robot.h"
 #include "Wire.h"
 #include <MPU6050_light.h>
@@ -24,12 +25,17 @@ int cm = 0;
 //Ciano: R=0, G=255, B=255 (verde + blu)
 //Bianco: R=255, G=255, B=255 (tutti i colori alla massima intensità)
 //Nero: R=0, G=0, B=0 (assenza di tutti i colori)
-void led(int R, int G, int B) {
-  for (int i = 0; i < led_numbers; i++) {
-    strip.setPixelColor(i, strip.Color(R, G, B));
-    strip.show();
-    delay(50);
-  }
+// se scrivo 7 li accende tutti
+void led(int ledNumber, int R, int G, int B) {
+    if (ledNumber >= 0 && ledNumber < led_numbers) { // Verifica che il numero del LED sia valido
+        strip.setPixelColor(ledNumber, strip.Color(R, G, B));
+        strip.show();
+    } else if (ledNumber == 7) { // Se ledNumber è 7, accendi tutti i LED
+        for (int i = 0; i < led_numbers; i++) {
+            strip.setPixelColor(i, strip.Color(R, G, B));
+        }
+        strip.show();
+    }
 }
 
 int ping(int pingPin) { 
@@ -90,32 +96,62 @@ void mpu6050() {
 }
 
 bool robotIncastrato() {
-  mpu6050();
+  static float accX_media = 0; 
+  static float accY_media = 0;
+  static int count = 0;
 
-  float sogliaInclinazione = 0.01; // Soglia da calibrare
+  mpu6050(); // Aggiorna i dati del sensore
 
-  float inclinazioneX = mpu.getAccY();//mpu.getAccAngleX();
-  float inclinazioneY = mpu.getAccAngleY();
-  //if (abs(inclinazioneX) > sogliaInclinazione || abs(inclinazioneY) > sogliaInclinazione) {
-  if (inclinazioneX < sogliaInclinazione) {
-    Serial.println("true");
-    return true; // Robot incastrato
-    
-  } else {
-    Serial.println("false");
+  float sogliaMovimento = 0.005; // Ridotto da 0.05 a 0.005
+  float sogliaInclinazione = 10.0; // Aumentata per evitare falsi positivi
+  float sogliaGiro = 0.5; // Se il giroscopio rileva un movimento significativo, il robot non è incastrato
+
+  float accX = abs(mpu.getAccX());
+  float accY = abs(mpu.getAccY());
+  float gyroZ = abs(mpu.getGyroZ());
+  float inclinazioneX = abs(mpu.getAccAngleX());
+  float inclinazioneY = abs(mpu.getAccAngleY());
+
+  // Aggiornamento della media mobile
+  accX_media = ((accX_media * count) + accX) / (count + 1);
+  accY_media = ((accY_media * count) + accY) / (count + 1);
+  count = min(count + 1, NUM_CAMPIONI); // Evita overflow
+
+  Serial.print("AccX Media: "); Serial.print(accX_media);
+  Serial.print(" - AccY Media: "); Serial.print(accY_media);
+  Serial.print(" - GyroZ: "); Serial.println(gyroZ);
+  
+  // Verifica se il robot è bloccato (bassa accelerazione per un periodo)
+  bool bloccato = (accX_media < sogliaMovimento && accY_media < sogliaMovimento);
+
+  // Se il giroscopio indica che sta ruotando, allora il robot NON è bloccato
+  if (gyroZ > sogliaGiro) {
+    Serial.println("Robot in movimento (sta girando).");
     return false;
-    
   }
+
+  // Verifica se è inclinato in modo anomalo
+  bool inclinato = (inclinazioneX > sogliaInclinazione || inclinazioneY > sogliaInclinazione);
+
+  if (bloccato || inclinato) {
+    Serial.println("Robot INCASRATO!");
+    return true;
+  }
+
+  Serial.println("Robot in movimento.");
+  return false;
 }
 
 void setup() {
   Serial.begin(9600);     //opens serial port, sets data rate to 9600 bps
+
+  attachServos(); 
+  riposo();
+  delay(1000);
   Wire.begin();
   mpu.begin();
   mpu.calcOffsets(true,true); // gyro and accelero
-  attachServos(); 
-  riposo();
-
+  
   //Initialize WS2812
   strip.begin();
   //Set the WS2812 brightness
@@ -124,18 +160,35 @@ void setup() {
   pinMode(pingPin, INPUT); //Set the connection pin output mode Echo pin
   pinMode(trigPin, OUTPUT);//Set the connection pin output mode trog pin
 
+  led(1, 255, 0, 0);
+  delay(1000);
+  led(2, 0, 255, 0);
+  delay(1000);
+  led(3, 0, 0, 255);
+  delay(1000);
+  led(4, 255, 255, 0);
+  delay(1000);
+  led(5, 0, 255, 255);
+  delay(1000);
+  led(6, 255, 0, 255);
+
 }
 
 
 
 void loop() {
   distanza(); // Misura la distanza dall'ostacolo
-  led(0, 255, 0);
+  led(7, 0, 255, 0);
   mpu.update();
 
-  //if (robotIncastrato()) { // <--- Controlla se il robot è incastrato *prima* di tutto
+  if (robotIncastrato()) { // <--- Controlla se il robot è incastrato *prima* di tutto
     Serial.println("Robot incastrato!");
+    led(7, 255, 0, 0);
     indietro(); // Esempio: vai indietro di un po'
+    delay(1000);
+    indietro();
+    delay(1000);
+    indietro();
     delay(1000);
     testa_dritta();
     delay(1000);
@@ -144,18 +197,22 @@ void loop() {
     gira_a_destra();
     gira_a_destra();
     gira_a_destra();
+    gira_a_destra();
+    gira_a_destra();
     distanza();
     delay(1000);
 
- // } else if (cm > 40) { // <--- Se non è incastrato, controlla la distanza
- if (cm > 40) {
+  } else if (cm > 40) { // <--- Se non è incastrato, controlla la distanza
     avanti(); // Se non ci sono ostacoli vicini, vai avanti
+    distanza();
   } else {
+    led(7, 0, 0, 255);
     testa_destra(); // Altrimenti, muovi la testa a destra
     delay(1000); // Attendi un po' per dare tempo al servo di muoversi
     distanza(); // Misura di nuovo la distanza *dopo* aver mosso la testa
 
     if (cm > 40) {
+      led(7, 0, 0, 255);
       gira_a_destra(); // Se ora è libero a destra, gira a destra e vai avanti
       gira_a_destra();
       gira_a_destra();
@@ -165,12 +222,15 @@ void loop() {
       testa_dritta();
       delay(1000);
       avanti();
+
     } else {
+      led(7, 0, 0, 255);
       testa_sinistra(); // Se non è libero a destra, muovi la testa a sinistra
       delay(1000);
       distanza(); // Misura di nuovo la distanza *dopo* aver mosso la testa
 
       if (cm > 40) {
+        led(7, 0, 0, 255);
         gira_a_sinistra(); // Se ora è libero a sinistra, gira a sinistra e vai avanti
         gira_a_sinistra();
         gira_a_sinistra();
@@ -181,10 +241,16 @@ void loop() {
         delay(1000);
         distanza();
         avanti();
+        delay(1000);
 
       } else {
+        led(7, 0, 0, 255);
         // Se non è libero né a destra né a sinistra, puoi aggiungere un'azione alternativa
         // come andare indietro, fermarsi, o cercare un'altra direzione.
+        indietro(); // Esempio: vai indietro di un po'
+        delay(1000);
+        indietro(); // Esempio: vai indietro di un po'
+        delay(1000);
         indietro(); // Esempio: vai indietro di un po'
         delay(1000);
         testa_dritta();
