@@ -1,5 +1,5 @@
 //spider adeept ADA033-V5.0
-//moficare servo.h in 13 servo per timer
+//modificare servo.h in 13 servo per timer
 #define NUM_CAMPIONI 5 // Numero di letture per media mobile
 #include "movimento_robot.h"
 #include "Wire.h"
@@ -68,9 +68,9 @@ long microsecondsToCentimeters(long microseconds) {
 
 void distanza() {
    cm = ping(pingPin); 
-   Serial.print("distance: "); // Print a message of "Temp: "to the serial montiol.
-   Serial.print(cm);           // Print a centigrade temperature to the serial montiol. 
-   Serial.println(" cm");      // Print the unit of the centigrade temperature to the serial montiol.
+   Serial.print("distance: "); 
+   Serial.print(cm);           
+   Serial.println(" cm");
    delay(500);
 }
 
@@ -134,7 +134,7 @@ bool robotIncastrato() {
   bool inclinato = (inclinazioneX > sogliaInclinazione || inclinazioneY > sogliaInclinazione);
 
   if (bloccato || inclinato) {
-    Serial.println("Robot INCASRATO!");
+    Serial.println("Robot INCASTRATO!");
     return true;
   }
 
