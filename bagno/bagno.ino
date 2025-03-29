@@ -5,7 +5,7 @@
 // temperatura umidità AHT20
 // pulsante D5
 // relay D4 
-// painlessmesh 1.5.4 arduinojson 7.0.4
+// painlessmesh 1.5.3 arduinojson 6.21.5 esp32 3.0.7
 //************************************************************
 #include "Button2.h"
 #include <AHTxx.h>
@@ -34,7 +34,7 @@ String to = "bridgemqtt";
 uint32_t root_id =0;
 
 #define ROLE    "bagno"
-#define VERSION "Bagno v4.0.6"
+#define VERSION "Bagno v4.0.7"
 #define MESSAGE "bagno "
 
 // User stub
@@ -48,15 +48,20 @@ Task retryRootTask(RETRY_ROOT_INTERVAL, TASK_ONCE, &retryRoot);
 
 void sendMessage() {
   read_AHT();
-  // Usa sprintf o snprintf per evitare la frammentazione della memoria
+  char temp_str[10];
+  char hum_str[10];
+  snprintf(temp_str, sizeof(temp_str), "%.2f", t);
+  snprintf(hum_str, sizeof(hum_str), "%.2f", h);
+
   msg = "temperatura/";
-  msg += t;
+  msg += temp_str;
   mesh.sendSingle(to, msg);
+
   msg = "umidita/";
-  msg += h;
+  msg += hum_str;
   mesh.sendSingle(to, msg);
-  
-  taskSendMessage.setInterval( random( TASK_SECOND * 300, TASK_SECOND * 400 ));
+
+  taskSendMessage.setInterval(random(TASK_SECOND * 300, TASK_SECOND * 400));
 }
 
 void sendMessage1() {

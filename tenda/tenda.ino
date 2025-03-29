@@ -14,6 +14,8 @@
 Adafruit_SHT31 sht31 = Adafruit_SHT31();
 //void ICACHE_RAM_ATTR read_wind(); //per esp8266
 void IRAM_ATTR read_wind();//per esp32
+volatile unsigned long lastWindInterruptTime = 0;
+unsigned long windDebounceDelay = 50; // 50ms debounce
 
 float t,h;
 const unsigned long RETRY_ROOT_INTERVAL = 1200000; // 20 minuti
@@ -66,13 +68,21 @@ Task retryRootTask(RETRY_ROOT_INTERVAL, TASK_ONCE, &retryRoot);
 
 void sendMessage() {
   read_sht30();
+
+  char temp_str[10];
+  char hum_str[10];
+  snprintf(temp_str, sizeof(temp_str), "%.2f", t);
+  snprintf(hum_str, sizeof(hum_str), "%.2f", h);
+
   msg = "temperatura/";
-  msg += t;
+  msg += temp_str;
   mesh.sendSingle(to, msg);
+
   msg = "umidita/";
-  msg += h;
+  msg += hum_str;
   mesh.sendSingle(to, msg);
-  taskSendMessage.setInterval( random( TASK_SECOND * 300, TASK_SECOND * 400 ));
+
+  taskSendMessage.setInterval(random(TASK_SECOND * 300, TASK_SECOND * 400));
 }
 
 void sendMessage1() {
@@ -135,7 +145,11 @@ void read_sht30(){
 }}
 
 void read_wind() {
-  leggiVento=true;
+  unsigned long interruptTime = millis();
+  if (interruptTime - lastWindInterruptTime > windDebounceDelay) {
+    leggiVento = true;
+  }
+  lastWindInterruptTime = interruptTime;
 }
 
 void update_status() {
@@ -225,7 +239,7 @@ void loop() {
     mesh.sendSingle(to, msg);
   }
    
-  if (int(Kmora)>int(imp)){
+  if (Kmora>imp){
     digitalWrite(relay_salita, HIGH);
     //leggiVento=false;
     //Serial.printf("reed non attivo\n");

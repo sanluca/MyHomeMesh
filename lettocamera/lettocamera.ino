@@ -33,7 +33,7 @@ String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "lettocamera"
-#define VERSION "LettoCamera v3.0.2"
+#define VERSION "LettoCamera v3.0.3"
 #define MESSAGE "lettocamera "
 
 // User stub
@@ -94,30 +94,37 @@ void nodeTimeAdjustedCallback(int32_t offset) {
     Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
 }
 
-void read_peso(){
-  if (scale.is_ready()){
-  //scale.power_up();
-  //scale.wait_ready(); // Wait till scale is ready, this is blocking if your hardware is not connected properly.
-  //scale.set_scale(calibration_factor);  // Sets the calibration factor.
-  //scale.wait_ready();
-  reading = scale.get_units(10);        //Read scale in g/Kg
-  raw = scale.read_average(5);          //Read raw value from scale too
-  if (reading < 0) {
-    reading = 0.00;     //Sets reading to 0 if it is a negative value, sometimes loadcells will drift into slightly negative values
+void read_peso() {
+  scale.power_up(); // Accendi l'HX711
+  if (scale.wait_ready_timeout()) { // Attendi che la scala sia pronta con timeout
+    scale.set_scale(calibration_factor); // Imposta il fattore di calibrazione
+    reading = scale.get_units(10); // Leggi la scala in g/Kg
+    raw = scale.read_average(5); // Leggi il valore raw dalla scala
+
+    if (reading < 0) {
+      reading = 0.00; // Imposta la lettura a 0 se è negativa
+    }
+
+    // Usa snprintf per formattare le stringhe in modo più efficiente
+    char reading_str[20];
+    char raw_str[20];
+    snprintf(reading_str, sizeof(reading_str), "%.2f", reading); // Formatta con 2 decimali
+    snprintf(raw_str, sizeof(raw_str), "%.0f", raw); // Formatta senza decimali
+
+    msg = "peso/";
+    msg += reading_str;
+    mesh.sendSingle(to, msg);
+
+    msg = "valuerawstr/";
+    msg += raw_str;
+    mesh.sendSingle(to, msg);
+  } else {
+    Serial.println("Errore: HX711 non pronto!");
+    msg = "error/HX711notready";
+    mesh.sendSingle(to, msg);
   }
-
-  String value_str = String(reading);
-  String value_raw_str = String(raw);
-
-  msg = "peso/";
-  msg += value_str.c_str();
-  mesh.sendSingle(to, msg);
-
-  msg = "valuerawstr/";
-  msg += value_raw_str.c_str();
-  mesh.sendSingle(to, msg);
-  //scale.power_down();
-  }}
+  scale.power_down(); // Spegni l'HX711
+}
 
 void update_status()
 {

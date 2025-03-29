@@ -10,7 +10,7 @@
 // pulsante 3 corridoio
 // temperatura umidità AHT SDA 8 SCL 9
 // 
-//painlessmesh 1.5.4 arduinojson 7.0.4
+//painlessmesh 1.5.3 arduinojson 6.21.5 esp32 3.0.7
 //************************************************************
 #include "Button2.h"
 #include <AHTxx.h>
@@ -46,7 +46,7 @@ String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "studio"
-#define VERSION "Studio v4.0.2"
+#define VERSION "Studio v4.0.3"
 #define MESSAGE "studio "
 
 // User stub
@@ -60,13 +60,16 @@ Task retryRootTask(RETRY_ROOT_INTERVAL, TASK_ONCE, &retryRoot);
 
 void sendMessage() {
   read_AHT();
+  char temp_str[10], hum_str[10];
+  snprintf(temp_str, sizeof(temp_str), "%.2f", t);
+  snprintf(hum_str, sizeof(hum_str), "%.2f", h);
   msg = "temperatura/";
-  msg += t;
+  msg += temp_str;
   mesh.sendSingle(to, msg);
   msg = "umidita/";
-  msg += h;
+  msg += hum_str;
   mesh.sendSingle(to, msg);
-  taskSendMessage.setInterval( random( TASK_SECOND * 300, TASK_SECOND * 400 ));
+  taskSendMessage.setInterval(random(TASK_SECOND * 300, TASK_SECOND * 400));
 }
 
 void sendMessage1() {
@@ -150,45 +153,45 @@ void read_AHT() {
 void button_setup() {
   btn1.setPressedHandler([](Button2 & b) {
     relayState1 = !relayState1;
-     digitalWrite(relay_studio,relayState1);
-     if (relayState1 == HIGH){
-      msg = "output/";
+    digitalWrite(relay_studio,relayState1);
+    msg = "output/";
+    if (relayState1 == HIGH){
       msg += "2";
-      mesh.sendSingle(to, msg);
-     }
-     else if (relayState1 == LOW){
-      msg = "output/";
+    } else {
       msg += "1";
-      mesh.sendSingle(to, msg);
-     }
-    });
+    }
+    mesh.sendSingle(to, msg);
+  });
 
   btn2.setPressedHandler([](Button2 & b) {
     relayState2 = !relayState2;
-     digitalWrite(relay_corridoio,relayState2);
-     if (relayState2 == HIGH){
-      msg = "output/";
+    digitalWrite(relay_corridoio,relayState2);
+    msg = "output/";
+    if (relayState2 == HIGH){
       msg += "4";
-      mesh.sendSingle(to, msg);
-     }
-     else if (relayState2 == LOW){
-      msg = "output/";
+    } else {
       msg += "3";
-      mesh.sendSingle(to, msg);
-     }
-    });
+    }
+    mesh.sendSingle(to, msg);
+  });
 }
 
 void update_status() {
   long uptime = millis() / 60000L;
+  char uptime_str[10], nodeid_str[10], freemem_str[10], rssi_str[10];
+  snprintf(uptime_str, sizeof(uptime_str), "%ld", uptime);
+  snprintf(nodeid_str, sizeof(nodeid_str), "%u", mesh.getNodeId());
+  snprintf(freemem_str, sizeof(freemem_str), "%u", ESP.getFreeHeap());
+  snprintf(rssi_str, sizeof(rssi_str), "%d", WiFi.RSSI());
+
   msg = "uptime/";
-  msg += uptime;
+  msg += uptime_str;
   mesh.sendSingle(to, msg);
   msg = "nodeid/";
-  msg += mesh.getNodeId();
+  msg += nodeid_str;
   mesh.sendSingle(to, msg);
   msg = "freememory/";
-  msg += String(ESP.getFreeHeap());
+  msg += freemem_str;
   mesh.sendSingle(to, msg);
   msg = "version/";
   msg += VERSION;
@@ -200,7 +203,7 @@ void update_status() {
   msg += WiFi.localIP().toString();
   mesh.sendSingle(to, msg);
   msg = "wifisignal/";
-  msg += String(WiFi.RSSI());
+  msg += rssi_str;
   mesh.sendSingle(to, msg);
 }
 

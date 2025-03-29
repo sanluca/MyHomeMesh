@@ -4,7 +4,7 @@
 // ds18b20 su D6 esp32 8
 // leggi acqua D5 esp32 0
 //
-// painlessmesh 1.5.4 arduinojson 7.3.0
+// painlessmesh 1.5.3 arduinojson 7.3.0 esp32 3.0.7
 //************************************************************
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
@@ -18,6 +18,8 @@ DallasTemperature sensors(&oneWire);
 void IRAM_ATTR leggi_acqua();
 int acqua = 0;
 volatile boolean pubblicaAcqua = false;
+volatile unsigned long lastInterruptTime = 0;
+unsigned long debounceDelay = 200; // 200ms debounce
 
 String msg;
 const unsigned long RETRY_ROOT_INTERVAL = 1200000; // 20 minuti
@@ -40,7 +42,7 @@ String to = "bridgemqtt";
 uint32_t root_id = 0;
 
 #define ROLE    "cantina"
-#define VERSION "Cantina v4.0.1"
+#define VERSION "Cantina v4.0.2"
 #define MESSAGE "cantina "
 
 // User stub
@@ -107,7 +109,11 @@ void nodeTimeAdjustedCallback(int32_t offset) {
 }
 
 void leggi_acqua() {
-  pubblicaAcqua = true;
+  unsigned long interruptTime = millis();
+  if (interruptTime - lastInterruptTime > debounceDelay) {
+    pubblicaAcqua = true;
+  }
+  lastInterruptTime = interruptTime;
 }
 
 void read_dallas() {

@@ -15,6 +15,8 @@ Adafruit_BME280 bme; // I2C
 void ICACHE_RAM_ATTR leggi_pioggia();
 int pioggia = 0;
 volatile boolean pubblicaPioggia = false;
+volatile unsigned long lastRainInterruptTime = 0;
+unsigned long rainDebounceDelay = 500; // 200ms debounce
 const unsigned long RETRY_ROOT_INTERVAL = 1200000; // 20 minuti
 bool retryTaskEnabled = false; // Flag per il task di retry
 float t,h,p,a;
@@ -35,7 +37,7 @@ String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "remota"
-#define VERSION "Remota v3.1.2"
+#define VERSION "Remota v3.2.0"
 #define MESSAGE "remota "
 
 // User stub
@@ -49,19 +51,30 @@ Task retryRootTask(RETRY_ROOT_INTERVAL, TASK_ONCE, &retryRoot);
 
 void sendMessage() {
   read_bme280();
+
+  char temp_str[10], hum_str[10], press_str[10], alt_str[10];
+  snprintf(temp_str, sizeof(temp_str), "%.2f", t);
+  snprintf(hum_str, sizeof(hum_str), "%.2f", h);
+  snprintf(press_str, sizeof(press_str), "%.2f", p);
+  snprintf(alt_str, sizeof(alt_str), "%.2f", a);
+
   msg = "temperatura/";
-  msg += t;
+  msg += temp_str;
   mesh.sendSingle(to, msg);
+
   msg = "umidita/";
-  msg += h;
+  msg += hum_str;
   mesh.sendSingle(to, msg);
+
   msg = "pressione/";
-  msg += p;
+  msg += press_str;
   mesh.sendSingle(to, msg);
+
   msg = "altitudine/";
-  msg += a;
+  msg += alt_str;
   mesh.sendSingle(to, msg);
-  taskSendMessage.setInterval( random( TASK_SECOND * 300, TASK_SECOND * 400 ));
+
+  taskSendMessage.setInterval(random(TASK_SECOND * 300, TASK_SECOND * 400));
 }
 
 void sendMessage1() {
@@ -110,31 +123,47 @@ void read_bme280() {
 }}
 
 void leggi_pioggia() {
-  pubblicaPioggia = true;
+  unsigned long interruptTime = millis();
+  if (interruptTime - lastRainInterruptTime > rainDebounceDelay) {
+    pubblicaPioggia = true;
+    lastRainInterruptTime = interruptTime;
+  }
 }
 
 void update_status() {
   long uptime = millis() / 60000L;
+  char uptime_str[10], nodeid_str[10], freemem_str[10], rssi_str[10];
+  snprintf(uptime_str, sizeof(uptime_str), "%ld", uptime);
+  snprintf(nodeid_str, sizeof(nodeid_str), "%u", mesh.getNodeId());
+  snprintf(freemem_str, sizeof(freemem_str), "%u", ESP.getFreeHeap());
+  snprintf(rssi_str, sizeof(rssi_str), "%d", WiFi.RSSI());
+
   msg = "uptime/";
-  msg += uptime;
+  msg += uptime_str;
   mesh.sendSingle(to, msg);
+
   msg = "nodeid/";
-  msg += mesh.getNodeId();
+  msg += nodeid_str;
   mesh.sendSingle(to, msg);
+
   msg = "freememory/";
-  msg += String(ESP.getFreeHeap());
+  msg += freemem_str;
   mesh.sendSingle(to, msg);
+
   msg = "version/";
   msg += VERSION;
   mesh.sendSingle(to, msg);
+
   msg = "root/";
   msg += root_id;
   mesh.sendSingle(to, msg);
+
   msg = "ip/";
   msg += WiFi.localIP().toString();
   mesh.sendSingle(to, msg);
+
   msg = "wifisignal/";
-  msg += String(WiFi.RSSI());
+  msg += rssi_str;
   mesh.sendSingle(to, msg);
 }
 
