@@ -34,7 +34,7 @@ const float raggio = 0.06; // raggio dell'anemometro in metri
 float deltaTempo = 0;
 float Metris = 0;
 float Kmora= 0;
-float imp = 8; //velocità max poi si apre la tenda
+float imp = 7; //velocità max poi si apre la tenda
 volatile boolean leggiVento=false;
 
 
@@ -54,7 +54,7 @@ String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "tenda"
-#define VERSION "Tenda v3.1.0"
+#define VERSION "Tenda v3.1.1"
 #define MESSAGE "tenda "
 
 // User stub
