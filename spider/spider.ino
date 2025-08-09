@@ -24,7 +24,7 @@ enum EvasionPath { PATH_LEFT, PATH_RIGHT, PATH_BLOCKED };
 EvasionPath chosenPath = PATH_BLOCKED;
 
 // --- Thresholds & Constants ---
-const int OBSTACLE_DISTANCE_CM = 35;
+const int OBSTACLE_DISTANCE_CM = 15;
 const float BUMP_THRESHOLD = 1.5;
 const unsigned long OBSERVE_INTERVAL_MS = 15000;
 const unsigned long ULTRASONIC_INTERVAL_MS = 100;
