@@ -1,5 +1,5 @@
 // Adeept Hexapod Spider Robot ADA033-V5.0
-#define NUM_SAMPLES 5 // Number of readings for moving average
+// Refactored with a non-blocking State Machine for complex, responsive behavior
 
 #include "movimento_robot.h"
 #include "servos.h"
@@ -7,30 +7,39 @@
 #include <MPU6050_light.h>
 #include <Adafruit_NeoPixel.h>
 
+// --- Hardware Definitions ---
 #define LED_COUNT 6
 #define LED_PIN A1
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
-
-MPU6050 mpu(Wire);
-
 const int ULTRASONIC_ECHO_PIN = A3;
 const int ULTRASONIC_TRIG_PIN = A2;
+
+// --- Global Objects ---
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+MPU6050 mpu(Wire);
+
+// --- State Machine ---
+enum RobotState { IDLE, EXPLORING, ASSESSING_OBSTACLE, EVADING, OBSERVING, ALERT };
+RobotState currentState = IDLE;
+enum EvasionPath { PATH_LEFT, PATH_RIGHT, PATH_BLOCKED };
+EvasionPath chosenPath = PATH_BLOCKED;
+
+// --- Thresholds & Constants ---
+const int OBSTACLE_DISTANCE_CM = 35;
+const float BUMP_THRESHOLD = 1.5;
+const unsigned long OBSERVE_INTERVAL_MS = 15000; // Observe every 15 seconds
+const unsigned long ULTRASONIC_INTERVAL_MS = 100; // Read sensor every 100ms
+const unsigned long EVASION_DURATION_MS = 1500; // Turn for 1.5 seconds
+
+// --- Timers & Global Variables ---
+unsigned long last_state_change_time = 0;
+unsigned long last_observe_time = 0;
+unsigned long last_ultrasonic_read = 0;
 int distance_cm = 0;
 
-bool is_following = false;
-
-// --- Thresholds ---
-const int START_FOLLOW_DISTANCE_CM = 40;
-const int STOP_FOLLOW_DISTANCE_CM = 100;
-const float MOVEMENT_THRESHOLD = 0.005;
-const float TILT_THRESHOLD = 10.0;
-const float GYRO_THRESHOLD = 0.5;
-
-void set_led(int led_number, int r, int g, int b) {
-    if (led_number >= 0 && led_number < LED_COUNT) {
-        strip.setPixelColor(led_number, strip.Color(r, g, b));
-        strip.show();
-    }
+// --- Utility Functions ---
+void change_state(RobotState newState) {
+    currentState = newState;
+    last_state_change_time = millis();
 }
 
 void set_all_leds(int r, int g, int b) {
@@ -44,181 +53,177 @@ long microseconds_to_centimeters(long microseconds) {
     return microseconds / 29 / 2;
 }
 
-int get_distance_cm() {
-    long duration;
-    digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
-    delayMicroseconds(2);
-    digitalWrite(ULTRASONIC_TRIG_PIN, HIGH);
-    delayMicroseconds(5);
-    digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
-    duration = pulseIn(ULTRASONIC_ECHO_PIN, HIGH);
-    return microseconds_to_centimeters(duration);
-}
-
-void print_mpu_data() {
-    Serial.print(F("TEMPERATURE: ")); Serial.println(mpu.getTemp());
-    Serial.print(F("ACCELERO  X: ")); Serial.print(mpu.getAccX());
-    Serial.print("\tY: "); Serial.print(mpu.getAccY());
-    Serial.print("\tZ: "); Serial.println(mpu.getAccZ());
-    Serial.print(F("GYRO      X: ")); Serial.print(mpu.getGyroX());
-    Serial.print("\tY: "); Serial.print(mpu.getGyroY());
-    Serial.print("\tZ: "); Serial.println(mpu.getGyroZ());
-    Serial.print(F("ACC ANGLE X: ")); Serial.print(mpu.getAccAngleX());
-    Serial.print("\tY: "); Serial.println(mpu.getAccAngleY());
-    Serial.print(F("ANGLE     X: ")); Serial.print(mpu.getAngleX());
-    Serial.print("\tY: "); Serial.print(mpu.getAngleY());
-    Serial.print("\tZ: "); Serial.println(mpu.getAngleZ());
-    Serial.println(F("=====================================================\n"));
-}
-
-bool is_robot_stuck() {
-    static float accX_avg = 0;
-    static float accY_avg = 0;
-    static int count = 0;
-
-    // print_mpu_data(); // Uncomment for debugging
-
-    float accX = abs(mpu.getAccX());
-    float accY = abs(mpu.getAccY());
-    float gyroZ = abs(mpu.getGyroZ());
-    float tiltX = abs(mpu.getAccAngleX());
-    float tiltY = abs(mpu.getAccAngleY());
-
-    accX_avg = ((accX_avg * count) + accX) / (count + 1);
-    accY_avg = ((accY_avg * count) + accY) / (count + 1);
-    count = min(count + 1, NUM_SAMPLES);
-
-    bool stopped = (accX_avg < MOVEMENT_THRESHOLD && accY_avg < MOVEMENT_THRESHOLD);
-    bool tilted = (tiltX > TILT_THRESHOLD || tiltY > TILT_THRESHOLD);
-
-    if (gyroZ > GYRO_THRESHOLD) {
-        return false; // Robot is turning
-    }
-
-    if (stopped || tilted) {
-        Serial.println("Robot is STUCK!");
-        return true;
-    }
-
-    return false;
-}
-
-void handle_stuck() {
-    Serial.println("Robot is stuck! Trying to get out.");
-    set_all_leds(255, 0, 0); // Red
-    move_backward();
-    delay(1000);
-    move_backward();
-    delay(1000);
-    move_backward();
-    delay(1000);
-    head_straight();
-    delay(1000);
-    for (int i = 0; i < 7; i++) {
-        turn_right();
-    }
-    delay(1000);
-}
-
-void handle_obstacle() {
-    set_all_leds(0, 0, 255); // Blue
-    head_right();
-    delay(1000);
-    distance_cm = get_distance_cm();
-    if (distance_cm > START_FOLLOW_DISTANCE_CM) {
-        for (int i = 0; i < 5; i++) {
-            turn_right();
-        }
-        delay(1000);
-        head_straight();
-        delay(1000);
-        move_forward();
-        delay(500);
-    } else {
-        head_left();
-        delay(1000);
-        distance_cm = get_distance_cm();
-        if (distance_cm > START_FOLLOW_DISTANCE_CM) {
-            for (int i = 0; i < 5; i++) {
-                turn_left();
-            }
-            delay(1000);
-            head_straight();
-            delay(1000);
-            move_forward();
-            delay(500);
+void read_distance_sensor() {
+    if (millis() - last_ultrasonic_read > ULTRASONIC_INTERVAL_MS) {
+        last_ultrasonic_read = millis();
+        long duration;
+        digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
+        delayMicroseconds(2);
+        digitalWrite(ULTRASONIC_TRIG_PIN, HIGH);
+        delayMicroseconds(5);
+        digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
+        duration = pulseIn(ULTRASONIC_ECHO_PIN, HIGH, 50000); // 50ms timeout
+        if (duration > 0) {
+            distance_cm = microseconds_to_centimeters(duration);
         } else {
-            handle_stuck(); // Trapped, try to get out
+            distance_cm = 999;
         }
     }
 }
 
-void follow_object() {
-    if (distance_cm > START_FOLLOW_DISTANCE_CM) {
-        move_forward();
-        delay(500);
-    } else {
-        handle_obstacle();
+bool check_for_bump() {
+    float accX = mpu.getAccX();
+    float accY = mpu.getAccY();
+    float totalAcc = sqrt(accX * accX + accY * accY);
+    return (totalAcc > BUMP_THRESHOLD);
+}
+
+// --- State Handlers ---
+
+void handle_idle() {
+    rest();
+    if (millis() - last_state_change_time > 1000) {
+        change_state(EXPLORING);
     }
 }
+
+void handle_exploring() {
+    set_all_leds(0, 100, 0); // Dim Green
+    tripod_gait_forward();
+
+    if (distance_cm < OBSTACLE_DISTANCE_CM) {
+        rest();
+        change_state(ASSESSING_OBSTACLE);
+    } else if (check_for_bump()) {
+        rest();
+        change_state(ALERT);
+    } else if (millis() - last_observe_time > OBSERVE_INTERVAL_MS) {
+        rest();
+        change_state(OBSERVING);
+    }
+}
+
+void handle_assessing_obstacle() {
+    static int assessment_step = 0;
+    static unsigned long last_assessment_update = 0;
+    static int left_dist = 0, right_dist = 0;
+    unsigned long interval = 400; // ms between steps
+
+    set_all_leds(150, 150, 0); // Dim Yellow
+
+    if (millis() - last_assessment_update > interval) {
+        last_assessment_update = millis();
+
+        switch (assessment_step) {
+            case 0:
+                rest();
+                body_up();
+                assessment_step++;
+                break;
+            case 1:
+                head_left();
+                assessment_step++;
+                break;
+            case 2:
+                left_dist = distance_cm;
+                Serial.print("Left dist: "); Serial.println(left_dist);
+                assessment_step++;
+                break;
+            case 3:
+                head_right();
+                assessment_step++;
+                break;
+            case 4:
+                right_dist = distance_cm;
+                Serial.print("Right dist: "); Serial.println(right_dist);
+                assessment_step++;
+                break;
+            case 5:
+                head_straight();
+                body_down();
+                assessment_step++;
+                break;
+            case 6:
+                if (left_dist > right_dist && left_dist > OBSTACLE_DISTANCE_CM) {
+                    chosenPath = PATH_LEFT;
+                } else if (right_dist > OBSTACLE_DISTANCE_CM) {
+                    chosenPath = PATH_RIGHT;
+                } else {
+                    chosenPath = PATH_BLOCKED;
+                }
+                assessment_step = 0; // Reset for next time
+                change_state(EVADING);
+                break;
+        }
+    }
+}
+
+void handle_evading() {
+    set_all_leds(0, 0, 150); // Dim Blue
+    if (chosenPath == PATH_LEFT) turn_left();
+    else if (chosenPath == PATH_RIGHT) turn_right();
+    else { move_backward(); turn_right(); } // Blocked
+
+    if (millis() - last_state_change_time > EVASION_DURATION_MS) {
+        rest();
+        change_state(EXPLORING);
+    }
+}
+
+void handle_observing() {
+    set_all_leds(100, 0, 150); // Purple
+    observe_animation();
+    if (millis() - last_state_change_time > 3000) { // Observe for 3 seconds
+        last_observe_time = millis();
+        change_state(EXPLORING);
+    }
+}
+
+void handle_alert() {
+    scared_animation();
+    // Flash LEDs
+    if ((millis() / 200) % 2 == 0) set_all_leds(255,0,0);
+    else set_all_leds(0,0,0);
+
+    if (millis() - last_state_change_time > 2000) { // Stay in alert for 2 seconds
+        change_state(ASSESSING_OBSTACLE);
+    }
+}
+
+// --- Main Setup and Loop ---
 
 void setup() {
     Serial.begin(9600);
-
     attach_servos();
-    rest();
-    delay(1000);
-
     Wire.begin();
     mpu.begin();
-    mpu.calcOffsets(true, true);
-
     strip.begin();
-    strip.setBrightness(50);
 
-    pinMode(ULTRASONIC_ECHO_PIN, INPUT);
     pinMode(ULTRASONIC_TRIG_PIN, OUTPUT);
+    pinMode(ULTRASONIC_ECHO_PIN, INPUT);
 
-    // LED startup sequence
-    set_led(0, 255, 0, 0);
-    delay(100);
-    set_led(1, 0, 255, 0);
-    delay(100);
-    set_led(2, 0, 0, 255);
-    delay(100);
-    set_led(3, 255, 255, 0);
-    delay(100);
-    set_led(4, 0, 255, 255);
-    delay(100);
-    set_led(5, 255, 0, 255);
-    delay(100);
+    strip.setBrightness(50);
     set_all_leds(0, 0, 0);
+
+    Serial.println("Calibrating MPU6050...");
+    mpu.calcOffsets(true, true);
+    Serial.println("Calibration Done!");
+
+    rest();
+    Serial.println("Spider robot initialized. Starting in IDLE state.");
+    change_state(IDLE);
 }
 
 void loop() {
-    distance_cm = get_distance_cm();
-    Serial.print("Distance: ");
-    Serial.print(distance_cm);
-    Serial.println(" cm");
-    set_all_leds(0, 255, 0); // Green
     mpu.update();
+    read_distance_sensor();
 
-    if (is_robot_stuck()) {
-        handle_stuck();
-    } else {
-        if (distance_cm < START_FOLLOW_DISTANCE_CM && !is_following) {
-            is_following = true;
-            Serial.println("Following started!");
-        } else if (distance_cm > STOP_FOLLOW_DISTANCE_CM && is_following) {
-            is_following = false;
-            Serial.println("Following stopped!");
-            rest();
-        }
-
-        if (is_following) {
-            follow_object();
-        } else {
-            rest();
-        }
+    switch (currentState) {
+        case IDLE: handle_idle(); break;
+        case EXPLORING: handle_exploring(); break;
+        case ASSESSING_OBSTACLE: handle_assessing_obstacle(); break;
+        case EVADING: handle_evading(); break;
+        case OBSERVING: handle_observing(); break;
+        case ALERT: handle_alert(); break;
     }
 }
