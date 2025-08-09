@@ -1,5 +1,7 @@
 // Adeept Hexapod Spider Robot ADA033-V5.0
 // Refactored with a non-blocking State Machine for complex, responsive behavior
+//board arduino uno
+#define NUM_SAMPLES 5 // Number of readings for moving average
 
 #include "movimento_robot.h"
 #include "servos.h"
