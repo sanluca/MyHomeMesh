@@ -18,7 +18,7 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(LED_COUNT, LED_PIN, NEO_GRB + NEO_KH
 MPU6050 mpu(Wire);
 
 // --- State Machine ---
-enum RobotState { IDLE, EXPLORING, ASSESSING_OBSTACLE, EVADING, OBSERVING, ALERT };
+enum RobotState { IDLE, EXPLORING, ASSESSING_OBSTACLE, EVADING, OBSERVING, ALERT, SUSPENDED };
 RobotState currentState = IDLE;
 enum EvasionPath { PATH_LEFT, PATH_RIGHT, PATH_BLOCKED };
 EvasionPath chosenPath = PATH_BLOCKED;
@@ -26,6 +26,7 @@ EvasionPath chosenPath = PATH_BLOCKED;
 // --- Thresholds & Constants ---
 const int OBSTACLE_DISTANCE_CM = 35;
 const float BUMP_THRESHOLD = 1.5;
+const float TILT_THRESHOLD_DEGREES = 20.0;
 const unsigned long OBSERVE_INTERVAL_MS = 15000;
 const unsigned long ULTRASONIC_INTERVAL_MS = 100;
 const unsigned long EVASION_DURATION_MS = 2000; // Turn for 2 seconds
@@ -85,6 +86,12 @@ bool check_for_bump() {
     return (totalAcc > BUMP_THRESHOLD);
 }
 
+bool check_for_tilt() {
+    float angleX = mpu.getAngleX();
+    float angleY = mpu.getAngleY();
+    return (abs(angleX) > TILT_THRESHOLD_DEGREES || abs(angleY) > TILT_THRESHOLD_DEGREES);
+}
+
 // --- State Handlers ---
 
 void handle_idle() {
@@ -98,7 +105,10 @@ void handle_exploring() {
     set_all_leds(0, 100, 0); // Dim Green
     move_forward(); // Use the original, non-blocking ripple gait
 
-    if (distance_cm < OBSTACLE_DISTANCE_CM) {
+    if (check_for_tilt()) {
+        rest();
+        change_state(SUSPENDED);
+    } else if (distance_cm < OBSTACLE_DISTANCE_CM) {
         rest();
         change_state(ASSESSING_OBSTACLE);
     } else if (check_for_bump()) {
@@ -194,6 +204,21 @@ void handle_alert() {
     }
 }
 
+void handle_suspended() {
+    set_all_leds(255, 255, 255); // White
+    rest();
+    // Check if the robot is placed back on a flat surface
+    if (!check_for_tilt()) {
+        // Wait a moment to ensure it's stable
+        if (millis() - last_state_change_time > 1000) {
+            change_state(IDLE);
+        }
+    } else {
+        // If it's still tilted, reset the timer
+        last_state_change_time = millis();
+    }
+}
+
 // --- Main Setup and Loop ---
 
 void setup() {
@@ -229,5 +254,6 @@ void loop() {
         case EVADING: handle_evading(); break;
         case OBSERVING: handle_observing(); break;
         case ALERT: handle_alert(); break;
+        case SUSPENDED: handle_suspended(); break;
     }
 }
