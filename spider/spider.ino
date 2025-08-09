@@ -1,4 +1,5 @@
 // Adeept Hexapod Spider Robot ADA033-V5.0
+//board arduino uno
 #define NUM_SAMPLES 5 // Number of readings for moving average
 
 #include "movimento_robot.h"
