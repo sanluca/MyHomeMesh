@@ -1,245 +1,224 @@
-// spider adeept ADA033-V5.0
-// modificare servo.h in 13 servo per timer
-#define NUM_CAMPIONI 5 // Numero di letture per media mobile
+// Adeept Hexapod Spider Robot ADA033-V5.0
+#define NUM_SAMPLES 5 // Number of readings for moving average
+
 #include "movimento_robot.h"
+#include "servos.h"
 #include "Wire.h"
 #include <MPU6050_light.h>
-#include <Adafruit_NeoPixel.h>     
-#define led_numbers  6 //WS2812 number  of LED
-#define PIN  A1  //WS2812 PIN                   
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(led_numbers, PIN, NEO_GRB + NEO_KHZ800);//NEO_KHZ400+NEO_RGB
+#include <Adafruit_NeoPixel.h>
+
+#define LED_COUNT 6
+#define LED_PIN A1
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 MPU6050 mpu(Wire);
 
-long timer = 0;
+const int ULTRASONIC_ECHO_PIN = A3;
+const int ULTRASONIC_TRIG_PIN = A2;
+int distance_cm = 0;
 
-const int pingPin = A3;  // pin connected to Echo Pin in the ultrasonic distance sensor
-const int trigPin = A2;  // pin connected to trig Pin in the ultrasonic distance sensor
-int cm = 0;
+bool is_following = false;
 
-// Variabile di stato per l'inseguimento
-bool insegui = false;
+// --- Thresholds ---
+const int START_FOLLOW_DISTANCE_CM = 40;
+const int STOP_FOLLOW_DISTANCE_CM = 100;
+const float MOVEMENT_THRESHOLD = 0.005;
+const float TILT_THRESHOLD = 10.0;
+const float GYRO_THRESHOLD = 0.5;
 
-// Funzione per impostare il colore dei LED
-void led(int ledNumber, int R, int G, int B) {
-  if (ledNumber >= 0 && ledNumber < led_numbers) {
-    strip.setPixelColor(ledNumber, strip.Color(R, G, B));
-    strip.show();
-  } else if (ledNumber == 7) {
-    for (int i = 0; i < led_numbers; i++) {
-      strip.setPixelColor(i, strip.Color(R, G, B));
+void set_led(int led_number, int r, int g, int b) {
+    if (led_number >= 0 && led_number < LED_COUNT) {
+        strip.setPixelColor(led_number, strip.Color(r, g, b));
+        strip.show();
+    }
+}
+
+void set_all_leds(int r, int g, int b) {
+    for (int i = 0; i < LED_COUNT; i++) {
+        strip.setPixelColor(i, strip.Color(r, g, b));
     }
     strip.show();
-  }
 }
 
-// Funzione per misurare la distanza con il sensore a ultrasuoni
-int ping(int pingPin) { 
-  long duration, cm; 
-  pinMode(trigPin, OUTPUT); 
-  digitalWrite(trigPin, LOW); 
-  delayMicroseconds(2); 
-  digitalWrite(trigPin, HIGH); 
-  delayMicroseconds(5); 
-  digitalWrite(trigPin, LOW); 
-
-  pinMode(pingPin, INPUT); 
-  duration = pulseIn(pingPin, HIGH); 
-
-  cm = microsecondsToCentimeters(duration); 
-  return cm ; 
-} 
-
-// Funzione per convertire i microsecondi in centimetri
-long microsecondsToCentimeters(long microseconds) { 
-  return microseconds / 29 / 2; 
+long microseconds_to_centimeters(long microseconds) {
+    return microseconds / 29 / 2;
 }
 
-// Funzione per aggiornare e stampare i dati del sensore MPU6050
-void mpu6050() {
-  Serial.print(F("TEMPERATURE: "));Serial.println(mpu.getTemp());
-  Serial.print(F("ACCELERO  X: "));Serial.print(mpu.getAccX());
-  Serial.print("\tY: ");Serial.print(mpu.getAccY());
-  Serial.print("\tZ: ");Serial.println(mpu.getAccZ());
-  Serial.print(F("GYRO      X: "));Serial.print(mpu.getGyroX());
-  Serial.print("\tY: ");Serial.print(mpu.getGyroY());
-  Serial.print("\tZ: ");Serial.println(mpu.getGyroZ());
-  Serial.print(F("ACC ANGLE X: "));Serial.print(mpu.getAccAngleX());
-  Serial.print("\tY: ");Serial.println(mpu.getAccAngleY());
-  Serial.print(F("ANGLE     X: "));Serial.print(mpu.getAngleX());
-  Serial.print("\tY: ");Serial.print(mpu.getAngleY());
-  Serial.print("\tZ: ");Serial.println(mpu.getAngleZ());
-  Serial.println(F("=====================================================\n"));
+int get_distance_cm() {
+    long duration;
+    digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
+    delayMicroseconds(2);
+    digitalWrite(ULTRASONIC_TRIG_PIN, HIGH);
+    delayMicroseconds(5);
+    digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
+    duration = pulseIn(ULTRASONIC_ECHO_PIN, HIGH);
+    return microseconds_to_centimeters(duration);
 }
 
-// Funzione per rilevare se il robot è incastrato
-bool robotIncastrato() {
-  static float accX_media = 0; 
-  static float accY_media = 0;
-  static int count = 0;
+void print_mpu_data() {
+    Serial.print(F("TEMPERATURE: ")); Serial.println(mpu.getTemp());
+    Serial.print(F("ACCELERO  X: ")); Serial.print(mpu.getAccX());
+    Serial.print("\tY: "); Serial.print(mpu.getAccY());
+    Serial.print("\tZ: "); Serial.println(mpu.getAccZ());
+    Serial.print(F("GYRO      X: ")); Serial.print(mpu.getGyroX());
+    Serial.print("\tY: "); Serial.print(mpu.getGyroY());
+    Serial.print("\tZ: "); Serial.println(mpu.getGyroZ());
+    Serial.print(F("ACC ANGLE X: ")); Serial.print(mpu.getAccAngleX());
+    Serial.print("\tY: "); Serial.println(mpu.getAccAngleY());
+    Serial.print(F("ANGLE     X: ")); Serial.print(mpu.getAngleX());
+    Serial.print("\tY: "); Serial.print(mpu.getAngleY());
+    Serial.print("\tZ: "); Serial.println(mpu.getAngleZ());
+    Serial.println(F("=====================================================\n"));
+}
 
-  mpu6050(); 
+bool is_robot_stuck() {
+    static float accX_avg = 0;
+    static float accY_avg = 0;
+    static int count = 0;
 
-  float sogliaMovimento = 0.005; 
-  float sogliaInclinazione = 10.0; 
-  float sogliaGiro = 0.5; 
+    // print_mpu_data(); // Uncomment for debugging
 
-  float accX = abs(mpu.getAccX());
-  float accY = abs(mpu.getAccY());
-  float gyroZ = abs(mpu.getGyroZ());
-  float inclinazioneX = abs(mpu.getAccAngleX());
-  float inclinazioneY = abs(mpu.getAccAngleY());
+    float accX = abs(mpu.getAccX());
+    float accY = abs(mpu.getAccY());
+    float gyroZ = abs(mpu.getGyroZ());
+    float tiltX = abs(mpu.getAccAngleX());
+    float tiltY = abs(mpu.getAccAngleY());
 
-  accX_media = ((accX_media * count) + accX) / (count + 1);
-  accY_media = ((accY_media * count) + accY) / (count + 1);
-  count = min(count + 1, NUM_CAMPIONI); 
+    accX_avg = ((accX_avg * count) + accX) / (count + 1);
+    accY_avg = ((accY_avg * count) + accY) / (count + 1);
+    count = min(count + 1, NUM_SAMPLES);
 
-  Serial.print("AccX Media: "); Serial.print(accX_media);
-  Serial.print(" - AccY Media: "); Serial.print(accY_media);
-  Serial.print(" - GyroZ: "); Serial.println(gyroZ);
-  
-  bool bloccato = (accX_media < sogliaMovimento && accY_media < sogliaMovimento);
+    bool stopped = (accX_avg < MOVEMENT_THRESHOLD && accY_avg < MOVEMENT_THRESHOLD);
+    bool tilted = (tiltX > TILT_THRESHOLD || tiltY > TILT_THRESHOLD);
 
-  if (gyroZ > sogliaGiro) {
-    Serial.println("Robot in movimento (sta girando).");
+    if (gyroZ > GYRO_THRESHOLD) {
+        return false; // Robot is turning
+    }
+
+    if (stopped || tilted) {
+        Serial.println("Robot is STUCK!");
+        return true;
+    }
+
     return false;
-  }
+}
 
-  bool inclinato = (inclinazioneX > sogliaInclinazione || inclinazioneY > sogliaInclinazione);
+void handle_stuck() {
+    Serial.println("Robot is stuck! Trying to get out.");
+    set_all_leds(255, 0, 0); // Red
+    move_backward();
+    delay(1000);
+    move_backward();
+    delay(1000);
+    move_backward();
+    delay(1000);
+    head_straight();
+    delay(1000);
+    for (int i = 0; i < 7; i++) {
+        turn_right();
+    }
+    delay(1000);
+}
 
-  if (bloccato || inclinato) {
-    Serial.println("Robot INCASTRATO!");
-    return true;
-  }
+void handle_obstacle() {
+    set_all_leds(0, 0, 255); // Blue
+    head_right();
+    delay(1000);
+    distance_cm = get_distance_cm();
+    if (distance_cm > START_FOLLOW_DISTANCE_CM) {
+        for (int i = 0; i < 5; i++) {
+            turn_right();
+        }
+        delay(1000);
+        head_straight();
+        delay(1000);
+        move_forward();
+        delay(500);
+    } else {
+        head_left();
+        delay(1000);
+        distance_cm = get_distance_cm();
+        if (distance_cm > START_FOLLOW_DISTANCE_CM) {
+            for (int i = 0; i < 5; i++) {
+                turn_left();
+            }
+            delay(1000);
+            head_straight();
+            delay(1000);
+            move_forward();
+            delay(500);
+        } else {
+            handle_stuck(); // Trapped, try to get out
+        }
+    }
+}
 
-  Serial.println("Robot in movimento.");
-  return false;
+void follow_object() {
+    if (distance_cm > START_FOLLOW_DISTANCE_CM) {
+        move_forward();
+        delay(500);
+    } else {
+        handle_obstacle();
+    }
 }
 
 void setup() {
-  Serial.begin(9600); 
+    Serial.begin(9600);
 
-  attachServos(); 
-  riposo();
-  delay(1000);
-  Wire.begin();
-  mpu.begin();
-  mpu.calcOffsets(true,true); 
-  
-  strip.begin();
-  strip.setBrightness(50);
+    attach_servos();
+    rest();
+    delay(1000);
 
-  pinMode(pingPin, INPUT); 
-  pinMode(trigPin, OUTPUT);
+    Wire.begin();
+    mpu.begin();
+    mpu.calcOffsets(true, true);
 
-  led(1, 255, 0, 0);
-  delay(1000);
-  led(2, 0, 255, 0);
-  delay(1000);
-  led(3, 0, 0, 255);
-  delay(1000);
-  led(4, 255, 255, 0);
-  delay(1000);
-  led(5, 0, 255, 255);
-  delay(1000);
-  led(6, 255, 0, 255);
+    strip.begin();
+    strip.setBrightness(50);
+
+    pinMode(ULTRASONIC_ECHO_PIN, INPUT);
+    pinMode(ULTRASONIC_TRIG_PIN, OUTPUT);
+
+    // LED startup sequence
+    set_led(0, 255, 0, 0);
+    delay(100);
+    set_led(1, 0, 255, 0);
+    delay(100);
+    set_led(2, 0, 0, 255);
+    delay(100);
+    set_led(3, 255, 255, 0);
+    delay(100);
+    set_led(4, 0, 255, 255);
+    delay(100);
+    set_led(5, 255, 0, 255);
+    delay(100);
+    set_all_leds(0, 0, 0);
 }
 
 void loop() {
-  cm = ping(pingPin);
-  Serial.print("distance: "); 
-  Serial.print(cm);                   
-  Serial.println(" cm");
-  led(7, 0, 255, 0);
-  mpu.update();
+    distance_cm = get_distance_cm();
+    Serial.print("Distance: ");
+    Serial.print(distance_cm);
+    Serial.println(" cm");
+    set_all_leds(0, 255, 0); // Green
+    mpu.update();
 
-  if (robotIncastrato()) { 
-    Serial.println("Robot incastrato!");
-    led(7, 255, 0, 0);
-    indietro(); 
-    delay(1000);
-    indietro();
-    delay(1000);
-    indietro();
-    delay(1000);
-    testa_dritta();
-    delay(1000);
-    gira_a_destra(); 
-    gira_a_destra();
-    gira_a_destra();
-    gira_a_destra();
-    gira_a_destra();
-    gira_a_destra();
-    gira_a_destra();
-    delay(1000);
-  } else {
-    if (cm < 40 && !insegui) {
-      insegui = true;
-      Serial.println("Inseguimento iniziato!");
-    } else if (cm > 100 && insegui) {
-      insegui = false;
-      Serial.println("Inseguimento terminato!");
-      riposo(); 
-    }
-
-    if (insegui) {
-      if (cm > 40) {
-        avanti();
-        delay(500);
-      } else {
-        led(7, 0, 0, 255);
-        testa_destra();
-        delay(1000);
-
-        if (cm > 40) {
-          led(7, 0, 0, 255);
-          gira_a_destra();
-          gira_a_destra();
-          gira_a_destra();
-          gira_a_destra();
-          gira_a_destra();
-          delay(1000);
-          testa_dritta();
-          delay(1000);
-          avanti();
-          delay(500);
-        } else {
-          led(7, 0, 0, 255);
-          testa_sinistra();
-          delay(1000);
-
-          if (cm > 40) {
-            led(7, 0, 0, 255);
-            gira_a_sinistra();
-            gira_a_sinistra();
-            gira_a_sinistra();
-            gira_a_sinistra();
-            gira_a_sinistra();
-            delay(1000);
-            testa_dritta();
-            delay(1000);
-            avanti();
-            delay(500);
-          } else {
-            indietro(); 
-            delay(1000);
-            indietro(); 
-            delay(1000);
-            indietro(); 
-            delay(1000);
-            testa_dritta();
-            delay(1000);
-            gira_a_destra(); 
-            gira_a_destra();
-            gira_a_destra();
-            gira_a_destra();
-            gira_a_destra();
-            delay(1000);
-          }
-        }
-      }
+    if (is_robot_stuck()) {
+        handle_stuck();
     } else {
-      riposo();
+        if (distance_cm < START_FOLLOW_DISTANCE_CM && !is_following) {
+            is_following = true;
+            Serial.println("Following started!");
+        } else if (distance_cm > STOP_FOLLOW_DISTANCE_CM && is_following) {
+            is_following = false;
+            Serial.println("Following stopped!");
+            rest();
+        }
+
+        if (is_following) {
+            follow_object();
+        } else {
+            rest();
+        }
     }
-  }
 }
