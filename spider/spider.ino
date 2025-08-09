@@ -1,7 +1,5 @@
-// Adeept Hexapod Spider Robot ADA033-V5.0
-// Refactored with a non-blocking State Machine for complex, responsive behavior
-//board arduino uno
-#define NUM_SAMPLES 5 // Number of readings for moving average
+// spider adeept ADA033-V5.0
+// Final version with non-blocking state machine and behaviors
 
 #include "movimento_robot.h"
 #include "servos.h"
@@ -28,9 +26,12 @@ EvasionPath chosenPath = PATH_BLOCKED;
 // --- Thresholds & Constants ---
 const int OBSTACLE_DISTANCE_CM = 35;
 const float BUMP_THRESHOLD = 1.5;
-const unsigned long OBSERVE_INTERVAL_MS = 15000; // Observe every 15 seconds
-const unsigned long ULTRASONIC_INTERVAL_MS = 100; // Read sensor every 100ms
-const unsigned long EVASION_DURATION_MS = 1500; // Turn for 1.5 seconds
+const unsigned long OBSERVE_INTERVAL_MS = 15000;
+const unsigned long ULTRASONIC_INTERVAL_MS = 100;
+const unsigned long EVASION_DURATION_MS = 2000; // Turn for 2 seconds
+const unsigned long ALERT_DURATION_MS = 2000;
+const unsigned long OBSERVE_DURATION_MS = 3000;
+const unsigned long ASSESSMENT_STEP_INTERVAL_MS = 400;
 
 // --- Timers & Global Variables ---
 unsigned long last_state_change_time = 0;
@@ -40,6 +41,10 @@ int distance_cm = 0;
 
 // --- Utility Functions ---
 void change_state(RobotState newState) {
+    Serial.print("Changing state from ");
+    Serial.print(currentState);
+    Serial.print(" to ");
+    Serial.println(newState);
     currentState = newState;
     last_state_change_time = millis();
 }
@@ -91,7 +96,7 @@ void handle_idle() {
 
 void handle_exploring() {
     set_all_leds(0, 100, 0); // Dim Green
-    tripod_gait_forward();
+    move_forward(); // Use the original, non-blocking ripple gait
 
     if (distance_cm < OBSTACLE_DISTANCE_CM) {
         rest();
@@ -109,43 +114,31 @@ void handle_assessing_obstacle() {
     static int assessment_step = 0;
     static unsigned long last_assessment_update = 0;
     static int left_dist = 0, right_dist = 0;
-    unsigned long interval = 400; // ms between steps
 
     set_all_leds(150, 150, 0); // Dim Yellow
 
-    if (millis() - last_assessment_update > interval) {
+    if (millis() - last_assessment_update > ASSESSMENT_STEP_INTERVAL_MS) {
         last_assessment_update = millis();
 
         switch (assessment_step) {
             case 0:
                 rest();
-                body_up();
-                assessment_step++;
-                break;
-            case 1:
                 head_left();
                 assessment_step++;
                 break;
-            case 2:
+            case 1:
                 left_dist = distance_cm;
                 Serial.print("Left dist: "); Serial.println(left_dist);
-                assessment_step++;
-                break;
-            case 3:
                 head_right();
                 assessment_step++;
                 break;
-            case 4:
+            case 2:
                 right_dist = distance_cm;
                 Serial.print("Right dist: "); Serial.println(right_dist);
-                assessment_step++;
-                break;
-            case 5:
                 head_straight();
-                body_down();
                 assessment_step++;
                 break;
-            case 6:
+            case 3:
                 if (left_dist > right_dist && left_dist > OBSTACLE_DISTANCE_CM) {
                     chosenPath = PATH_LEFT;
                 } else if (right_dist > OBSTACLE_DISTANCE_CM) {
@@ -162,9 +155,13 @@ void handle_assessing_obstacle() {
 
 void handle_evading() {
     set_all_leds(0, 0, 150); // Dim Blue
-    if (chosenPath == PATH_LEFT) turn_left();
-    else if (chosenPath == PATH_RIGHT) turn_right();
-    else { move_backward(); turn_right(); } // Blocked
+    if (chosenPath == PATH_LEFT) {
+        turn_left();
+    } else if (chosenPath == PATH_RIGHT) {
+        turn_right();
+    } else { // Blocked
+        move_backward();
+    }
 
     if (millis() - last_state_change_time > EVASION_DURATION_MS) {
         rest();
@@ -174,20 +171,25 @@ void handle_evading() {
 
 void handle_observing() {
     set_all_leds(100, 0, 150); // Purple
-    observe_animation();
-    if (millis() - last_state_change_time > 3000) { // Observe for 3 seconds
+    head_left();
+    if (millis() - last_state_change_time > OBSERVE_DURATION_MS/2) {
+      head_right();
+    }
+
+    if (millis() - last_state_change_time > OBSERVE_DURATION_MS) {
+        rest();
         last_observe_time = millis();
         change_state(EXPLORING);
     }
 }
 
 void handle_alert() {
-    scared_animation();
     // Flash LEDs
     if ((millis() / 200) % 2 == 0) set_all_leds(255,0,0);
     else set_all_leds(0,0,0);
 
-    if (millis() - last_state_change_time > 2000) { // Stay in alert for 2 seconds
+    if (millis() - last_state_change_time > ALERT_DURATION_MS) {
+        rest();
         change_state(ASSESSING_OBSTACLE);
     }
 }
