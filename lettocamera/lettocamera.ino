@@ -12,7 +12,7 @@ const int LOADCELL_SCK_PIN = 3; //RX
 int calibration_factor = 400; // Defines calibration factor we'll use for calibrating. se diminuisce aumenta il valore inversamente proporzionale
 float reading; // Float for reading
 float raw; // Float for raw value which can be useful
-const unsigned long RETRY_ROOT_INTERVAL = 1200000; // 20 minuti
+const unsigned long RETRY_ROOT_INTERVAL = 300000; // 5 minuti
 bool retryTaskEnabled = false; // Flag per il task di retry
 // Variabili e costanti per la gestione errori HX711 e riavvio
 int hx711_error_count = 0; // Contatore errori consecutivi HX711
@@ -99,11 +99,14 @@ void nodeTimeAdjustedCallback(int32_t offset) {
 
 void read_peso() {
   scale.power_up(); // Accendi l'HX711
-  if (scale.wait_ready_timeout(5000)) { // Attendi che la scala sia pronta con timeout
+  if (scale.is_ready()) { // Attendi che la scala sia pronta senza timeout bloccante
     hx711_error_count = 0;
     scale.set_scale(calibration_factor); // Imposta il fattore di calibrazione
-    reading = scale.get_units(10); // Leggi la scala in g/Kg
-    raw = scale.read_average(5); // Leggi il valore raw dalla scala
+
+    // Riduciamo il numero di campioni per evitare blocchi prolungati
+    // get_units(3) invece di 10, e read_average(1) invece di 5
+    reading = scale.get_units(3); // Leggi la scala in g/Kg
+    raw = scale.read_average(1); // Leggi il valore raw dalla scala
 
     if (reading < 0) {
       reading = 0.00; // Imposta la lettura a 0 se è negativa
@@ -123,12 +126,13 @@ void read_peso() {
     msg += raw_str;
     mesh.sendSingle(to, msg);
   } else {
+    // Se non è pronto, incrementiamo l'errore ma senza aspettare 5 secondi
     hx711_error_count++;
     Serial.println("Errore: HX711 non pronto!");
-    msg = "error/HX711notready";
-    mesh.sendSingle(to, msg);
-    if (hx711_error_count >= MAX_HX711_ERRORS) {
-      Serial.printf("Raggiunto il limite di %d errori consecutivi dell'HX711. Riavvio in corso...\n", MAX_HX711_ERRORS);
+    // msg = "error/HX711notready"; // Opzionale: inviare sempre l'errore intasa la rete se frequente
+    // mesh.sendSingle(to, msg);
+    if (hx711_error_count >= MAX_HX711_ERRORS * 10) { // Aumentiamo la soglia visto che controlliamo più spesso
+      Serial.printf("Raggiunto il limite di errori consecutivi dell'HX711. Riavvio in corso...\n");
       delay(1000); // Piccolo ritardo per permettere la stampa seriale
       ESP.restart(); // Riavvia la scheda
     }

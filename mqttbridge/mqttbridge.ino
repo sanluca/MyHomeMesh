@@ -98,10 +98,11 @@ void send_id()
   mesh.sendBroadcast(msgg);
 }
 
-void reconnect() {
-  unsigned long startAttemptTime = millis();
+unsigned long lastReconnectAttempt = 0;
 
-  while (!mqttClient.connected()) {
+void reconnect() {
+  if (millis() - lastReconnectAttempt > 5000) {
+    lastReconnectAttempt = millis();
     mqttClient.setBufferSize(2048);
     mqttClient.setKeepAlive(90);
 
@@ -109,14 +110,7 @@ void reconnect() {
       Serial.println("Connected");
       mqttClient.publish("home/bridge/start", "Ready!");
       mqttClient.subscribe("home/comand/#");
-    } else {
-      if (millis() - startAttemptTime > 5000) {
-        // Se la connessione fallisce per più di 5 secondi, esci dal loop
-        break;
-      }
-      delay(500);
-      mesh.update();
-      mqttClient.loop();
+      lastReconnectAttempt = 0;
     }
   }
 }
@@ -127,14 +121,14 @@ void loop() {
   mesh.update();
   mqttClient.loop();
 
-   if(myIP != getlocalIP()){
+  if(myIP != getlocalIP()){
     myIP = getlocalIP();
-  //  Serial.println("My IP is " + myIP.toString());
-}
+    //  Serial.println("My IP is " + myIP.toString());
+  }
 
-    if (!mqttClient.connected())  {
-      {reconnect();}
-    }
+  if (!mqttClient.connected())  {
+    reconnect();
+  }
 }
 
 void receivedCallback(const String& from, const String& msg) {
