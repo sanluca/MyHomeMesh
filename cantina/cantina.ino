@@ -22,7 +22,7 @@ volatile unsigned long lastInterruptTime = 0;
 unsigned long debounceDelay = 200; // 200ms debounce
 
 String msg;
-const unsigned long RETRY_ROOT_INTERVAL = 1200000; // 20 minuti
+const unsigned long RETRY_ROOT_INTERVAL = 300000; // 5 minuti
 bool retryTaskEnabled = false; // Flag per il task di retry
 float t,h,p,a,td;
 #define SEALEVELPRESSURE_HPA (1013.25)
@@ -174,7 +174,7 @@ void retryRoot() {
 
 void setup() {
   Serial.begin(115200);
-  pinMode( 21, INPUT );
+  // pinMode( 21, INPUT ); // Removed as it conflicts with OneWire
   bme.begin(0x77);
   sensors.begin();
   pinMode(acqua, INPUT);
