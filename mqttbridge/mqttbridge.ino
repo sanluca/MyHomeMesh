@@ -1,25 +1,26 @@
 //************************************************************
-//DOIT ESP32 DEVKIT V1
-//painlessmesh 1.5.3 arduinojson 6.21.5
+//ESP32 dev Module
+//
 #include <Arduino.h>
 //#include <painlessMesh.h>
-#include "../namedmesh/namedMesh.h"
+#include "namedMesh.h"
 #include <PubSubClient.h>
 #include <WiFiClient.h>
 
 #define   MESH_PREFIX     "whateverYouLike"
+
 #define   MESH_PASSWORD   "somethingSneaky"
 #define   MESH_PORT       5555
 
-#define   STATION_SSID     "mesh"
-#define   STATION_PASSWORD "mesh7mesh7"
+#define   STATION_SSID     "mesh18"
+#define   STATION_PASSWORD "mesh18mesh18"
 
 #define HOSTNAME "MQTT_Bridge"
 
 Scheduler userScheduler; // to control your personal task
 
 #define ROLE    "mqttbridge"
-#define VERSION "MQTTBRIDGE v5.0.2"
+#define VERSION "MQTTBRIDGE v5.0.5"
 #define MESSAGE "mqttbridge "
 
 // Prototypes
@@ -29,7 +30,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length);
 IPAddress getlocalIP();
 IPAddress myIP(0,0,0,0);
 IPAddress myAPIP(0,0,0,0);
-IPAddress mqttBroker(10, 42, 0, 1);
+IPAddress mqttBroker(192, 168, 1, 26);
 
 //painlessMesh  mesh;
 namedMesh  mesh;
@@ -74,10 +75,16 @@ void setup() {
   userScheduler.addTask( taskSendMessage );
   userScheduler.addTask( taskSendMessage1 );
   taskSendMessage.enable();
-  taskSendMessage1.enable();
+  //taskSendMessage1.enable();
+  delay(2000);
 }
 
+
 void update_status() {
+  // NUOVA PROTEZIONE: Se non abbiamo IP o MQTT non è connesso, ESCE SUBITO.
+  // Usiamo getlocalIP() che è sicuro perché legge una variabile interna della mesh
+  if (getlocalIP() == IPAddress(0,0,0,0) || !mqttClient.connected()) return;
+
   long uptime = millis() / 60000L;
   mqttClient.publish("home/bridge/uptime", String(uptime).c_str());
   mqttClient.publish("home/bridge/nodeid", String(mesh.getNodeId()).c_str());
@@ -98,46 +105,71 @@ void send_id()
   mesh.sendBroadcast(msgg);
 }
 
-void reconnect() {
-  unsigned long startAttemptTime = millis();
+void loop() {
+  mesh.update(); // Priorità alla mesh
 
-  while (!mqttClient.connected()) {
-    mqttClient.setBufferSize(2048);
+  IPAddress localIP = getlocalIP();
+
+  // Se abbiamo un IP valido (siamo connessi al router)
+  if (localIP != IPAddress(0, 0, 0, 0)) {
+    
+    // Se il task MQTT è spento, ORA lo accendiamo
+    if (!taskSendMessage1.isEnabled()) {
+      taskSendMessage1.enable();
+    }
+
+    // Gestione MQTT
+    mqttClient.loop();
+    if (!mqttClient.connected()) {
+      reconnect();
+    }
+
+  } else {
+    // Se perdiamo l'IP, SPEGNIAMO subito il task per evitare crash
+    if (taskSendMessage1.isEnabled()) {
+      taskSendMessage1.disable();
+    }
+  }
+
+  userScheduler.execute();
+  
+  // Aggiornamento variabile IP per debug
+  if(myIP != localIP) {
+    myIP = localIP;
+  }
+}
+
+unsigned long lastReconnectAttempt = 0;
+
+void reconnect() {
+  if (getlocalIP() == IPAddress(0,0,0,0)) return;
+  // Esegui il tentativo solo ogni 5 secondi
+  if (millis() - lastReconnectAttempt > 5000) {
+    lastReconnectAttempt = millis();
+    
+    Serial.print("Tentativo connessione MQTT... ");
+    
+    // Aumenta buffer e timeout per stabilità
+    mqttClient.setBufferSize(1024); // 2048 a volte è troppo per la heap residua con la mesh
     mqttClient.setKeepAlive(90);
 
+    // Tenta la connessione
     if (mqttClient.connect("BridgeMqttMesh")) {
-      Serial.println("Connected");
+      Serial.println("Connesso!");
       mqttClient.publish("home/bridge/start", "Ready!");
       mqttClient.subscribe("home/comand/#");
+      lastReconnectAttempt = 0;
     } else {
-      if (millis() - startAttemptTime > 5000) {
-        // Se la connessione fallisce per più di 5 secondi, esci dal loop
-        break;
-      }
-      delay(500);
-      mesh.update();
-      mqttClient.loop();
+      Serial.print("fallito, rc=");
+      Serial.println(mqttClient.state());
+      // Non bloccare o usare delay(), lascia che il loop continui
     }
   }
 }
 
-void loop() {
-  // Esegui i task pianificati dall'utente
-  userScheduler.execute();
-  mesh.update();
-  mqttClient.loop();
-
-   if(myIP != getlocalIP()){
-    myIP = getlocalIP();
-  //  Serial.println("My IP is " + myIP.toString());
-}
-
-    if (!mqttClient.connected())  {
-      {reconnect();}
-    }
-}
-
 void receivedCallback(const String& from, const String& msg) {
+  //Serial.printf("MESH RX -> Da: %s | Msg: %s\n", from.c_str(), msg.c_str());
+  if (!mqttClient.connected()) return;
   int pos = msg.indexOf('/'); // Trova il primo '/'
   if (pos != -1) {
     String topicPart = msg.substring(0, pos); // Parte prima del '/'
@@ -146,6 +178,7 @@ void receivedCallback(const String& from, const String& msg) {
     // Pubblica il messaggio solo se il payload non è vuoto
     if (!payload.isEmpty()) {
       String mqttTopic = "home/" + from + "/" + topicPart;
+      //Serial.printf("MQTT TX -> Topic: %s | Payload: %s\n", mqttTopic.c_str(), payload.c_str());
       mqttClient.publish(mqttTopic.c_str(), payload.c_str());
     }
   }

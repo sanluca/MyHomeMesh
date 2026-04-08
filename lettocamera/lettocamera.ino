@@ -1,14 +1,15 @@
 //************************************************************
 // lettura presenza nel letto con HX711
 // wemos d1 mini 
-// painlessmesh 1.5.3
-// esp8266 3.1.2
-// arduinojson 6.21.5
+// 
+// esp8266 2.0.17
+// esp32-s3 11-12
+//
 //************************************************************
 #include <HX711.h>
 // HX711 Pins
-const int LOADCELL_DOUT_PIN = 2; // D4 Remember these are ESP GPIO pins, they are not the physical pins on the board.
-const int LOADCELL_SCK_PIN = 3; //RX
+const int LOADCELL_DOUT_PIN = 11; //D5; // D4 Remember these are ESP GPIO pins, they are not the physical pins on the board.
+const int LOADCELL_SCK_PIN = 12; //D6; //RX
 int calibration_factor = 400; // Defines calibration factor we'll use for calibrating. se diminuisce aumenta il valore inversamente proporzionale
 float reading; // Float for reading
 float raw; // Float for raw value which can be useful
@@ -30,13 +31,13 @@ HX711 scale;                          // Initiate HX711 library
 Scheduler userScheduler; // to control your personal task
 //painlessMesh  mesh;
 namedMesh  mesh;
-String msg,rel;
+//String msg,rel;
 String nodeName = "lettocamera"; // Name needs to be unique
 String to = "bridgemqtt";
 uint32_t root_id=0;
 
 #define ROLE    "lettocamera"
-#define VERSION "LettoCamera v3.1.0"
+#define VERSION "LettoCamera v3.1.2"
 #define MESSAGE "lettocamera "
 
 // User stub
@@ -51,6 +52,7 @@ Task retryRootTask(RETRY_ROOT_INTERVAL, TASK_ONCE, &retryRoot);
 void sendMessage() {
   read_peso();
   taskSendMessage.setInterval( random( TASK_SECOND * 300, TASK_SECOND * 400 ));
+  //taskSendMessage.setInterval( TASK_SECOND * 5 );
 }
 
 void sendMessage1() {
@@ -60,7 +62,12 @@ void sendMessage1() {
 
 // Needed for painless library
 void receivedCallback( uint32_t from, String &msg ) {
+  String rel = msg;
   Serial.printf("startHere: Received from %u msg=%s\n", from, msg.c_str());
+  if (root_id != 0 && from != 0 && root_id != from) {
+      delay(200); 
+      ESP.restart();
+  }
   root_id=from;
   rel=msg;
 
@@ -98,22 +105,37 @@ void nodeTimeAdjustedCallback(int32_t offset) {
 }
 
 void read_peso() {
-  scale.power_up(); // Accendi l'HX711
-  if (scale.wait_ready_timeout(5000)) { // Attendi che la scala sia pronta con timeout
+  String msg;
+  //Serial.println("-> Accensione HX711 (power_up)");
+  //scale.power_up(); 
+  
+  // Verifica se la bilancia risponde
+  bool ready = scale.is_ready();
+  //bool ready = scale.wait_ready_timeout(50);
+  Serial.print("-> Stato HX711 (is_ready): ");
+  if(ready) Serial.println("PRONTO (OK)");
+  else Serial.println("NON PRONTO (ERRORE)");
+
+  if (ready) {
     hx711_error_count = 0;
-    scale.set_scale(calibration_factor); // Imposta il fattore di calibrazione
-    reading = scale.get_units(10); // Leggi la scala in g/Kg
-    raw = scale.read_average(5); // Leggi il valore raw dalla scala
+    scale.set_scale(calibration_factor); 
+    
+    // Lettura
+    reading = scale.get_units(10); 
+    raw = scale.read_average(5); 
 
-    if (reading < 0) {
-      reading = 0.00; // Imposta la lettura a 0 se è negativa
-    }
+    if (reading < 0) reading = 0.00; 
 
-    // Usa snprintf per formattare le stringhe in modo più efficiente
+    // *** STAMPA I VALORI SUL MONITOR ***
+    Serial.print("-> VALORI LETTI: Raw=");
+    Serial.print(raw);
+    Serial.print(" | Peso=");
+    Serial.println(reading);
+
     char reading_str[20];
     char raw_str[20];
-    snprintf(reading_str, sizeof(reading_str), "%.2f", reading); // Formatta con 2 decimali
-    snprintf(raw_str, sizeof(raw_str), "%.0f", raw); // Formatta senza decimali
+    snprintf(reading_str, sizeof(reading_str), "%.2f", reading); 
+    snprintf(raw_str, sizeof(raw_str), "%.0f", raw); 
 
     msg = "peso/";
     msg += reading_str;
@@ -122,44 +144,57 @@ void read_peso() {
     msg = "valuerawstr/";
     msg += raw_str;
     mesh.sendSingle(to, msg);
+    Serial.println("-> Dati inviati alla Mesh");
+    
   } else {
     hx711_error_count++;
-    Serial.println("Errore: HX711 non pronto!");
+    Serial.print("-> ERRORE CRITICO: HX711 muto. Contatore errori: ");
+    Serial.println(hx711_error_count);
+    
     msg = "error/HX711notready";
     mesh.sendSingle(to, msg);
-    if (hx711_error_count >= MAX_HX711_ERRORS) {
-      Serial.printf("Raggiunto il limite di %d errori consecutivi dell'HX711. Riavvio in corso...\n", MAX_HX711_ERRORS);
-      delay(1000); // Piccolo ritardo per permettere la stampa seriale
-      ESP.restart(); // Riavvia la scheda
+    
+    if (hx711_error_count >= MAX_HX711_ERRORS) { // Aumentato tolleranza per debug
+      Serial.println("-> Troppi errori consecutivi. Riavvio ESP...");
+      delay(1000); 
+      ESP.restart(); 
     }
   }
-  scale.power_down(); // Spegni l'HX711
+  //scale.power_down(); 
+  //Serial.println("-> HX711 spento (power_down)");
 }
 
-void update_status()
-{
+void update_status() {
+  String msg; // Variabile locale
+  
+  // 1. LEGGIAMO I DATI PRIMA DI TUTTO (Così esistono per tutta la funzione)
   long uptime = millis() / 60000L;
+  long freeMem = ESP.getFreeHeap(); // <--- ORA ESISTE
+  long rssi = WiFi.RSSI();          // <--- ORA ESISTE
+
+  // 2. Invio UPTIME (Separato per OpenHAB)
   msg = "uptime/";
   msg += uptime;
   mesh.sendSingle(to, msg);
-  msg = "nodeid/";
-  msg += mesh.getNodeId();
+  
+  // 3. Invio DEVICE STATUS (Pacchetto Unico)
+  msg = "devicestatus/"; 
+  msg += String(freeMem) + ";";       // Usiamo la variabile letta sopra
+  msg += String(rssi) + ";";          // Usiamo la variabile letta sopra
+  msg += WiFi.localIP().toString() + ";"; 
+  msg += String(mesh.getNodeId()) + ";"; 
+  msg += VERSION; 
+
   mesh.sendSingle(to, msg);
-  msg = "freememory/";
-  msg += String(ESP.getFreeHeap());
-  mesh.sendSingle(to, msg);
-  msg = "version/";
-  msg += VERSION;
-  mesh.sendSingle(to, msg);
-  msg = "root/";
-  msg += root_id;
-  mesh.sendSingle(to, msg);
-  msg = "ip/";
-  msg += WiFi.localIP().toString();
-  mesh.sendSingle(to, msg);
-  msg = "wifisignal/";
-  msg += String(WiFi.RSSI());
-  mesh.sendSingle(to, msg);
+
+  // 4. STAMPA DI DIAGNOSTICA SUL SERIALE (Ora funziona perché le variabili esistono)
+  Serial.println("--- STATUS REPORT ---");
+  Serial.printf("-> Uptime: %ld min\n", uptime);
+  Serial.printf("-> Free RAM: %ld bytes\n", freeMem); 
+  Serial.printf("-> WiFi Signal: %ld dBm\n", rssi);
+  Serial.println("---------------------");
+  
+  Serial.println("-> Status inviato (Uptime + DeviceStatus)");
 }
 
 void retryRoot() {
@@ -175,6 +210,7 @@ void retryRoot() {
 void setup() {
   Serial.begin(115200);
   scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);   // Start scale on specified pins
+  scale.power_up();
   //scale.wait_ready();                                 //Ensure scale is ready, this is a blocking function
   scale.set_scale(calibration_factor);                                  
   //scale.wait_ready();
@@ -202,4 +238,10 @@ void setup() {
 void loop() {
   // it will run the user scheduler as well
   mesh.update();
+  // Se sono passate 2 ore (7200000 ms), riavvia per pulire tutto
+ // if (millis() > 7200000) {
+ //    Serial.println("Riavvio programmato manutenzione RAM...");
+ //    delay(1000);
+ //    ESP.restart();
+//  }
 }

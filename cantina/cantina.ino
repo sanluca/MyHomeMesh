@@ -1,186 +1,277 @@
 //************************************************************
 // cantina ESP32C3 Dev Module
 //BME280 temperatura umidità pressione altitudine
-// ds18b20 su D6 esp32 8
-// leggi acqua D5 esp32 0
+// ds18b20 esp32 21
+// leggi acqua esp32 0
 //
-// painlessmesh 1.5.3 arduinojson 7.3.0 esp32 3.0.7
+// esp32 2.0.17
 //************************************************************
+//************************************************************
+// cantina ESP32C3 Dev Module - VERSIONE OTTIMIZZATA v4.0.4
+//************************************************************
+// Metti 'false' quando la monti definitivamente senza PC.
+// Se la lasci 'true' senza USB collegata, la C3 potrebbe bloccarsi dopo un po'.
+#define ENABLE_DEBUG false
+// --------------------------------
+
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #include <Wire.h>
 #include <OneWire.h> 
 #include <DallasTemperature.h>
+#include "namedMesh.h"
+
+// Macro per il debug sicuro (non toccare)
+#if ENABLE_DEBUG
+  #define LOG_BEGIN(x) Serial.begin(x)
+  #define LOG_PRINT(...) Serial.print(__VA_ARGS__)
+  #define LOG_PRINTLN(...) Serial.println(__VA_ARGS__)
+  #define LOG_PRINTF(...) Serial.printf(__VA_ARGS__)
+#else
+  #define LOG_BEGIN(x)
+  #define LOG_PRINT(...)
+  #define LOG_PRINTLN(...)
+  #define LOG_PRINTF(...)
+#endif
+
+// Sensori
 OneWire oneWire(21);
 DallasTemperature sensors(&oneWire);
+Adafruit_BME280 bme; 
 
-//void ICACHE_RAM_ATTR leggi_acqua();
+// Pin e Variabili Acqua
+const int pin_acqua = 0; // OCCHIO: Se all'avvio è a massa, entra in boot mode!
 void IRAM_ATTR leggi_acqua();
-int acqua = 0;
-volatile boolean pubblicaAcqua = false;
 volatile unsigned long lastInterruptTime = 0;
-unsigned long debounceDelay = 200; // 200ms debounce
+unsigned long debounceDelay = 200; 
+volatile unsigned long impulsi_accumulati = 0;
 
+// Variabili Mesh e Dati
 String msg;
-const unsigned long RETRY_ROOT_INTERVAL = 1200000; // 20 minuti
-bool retryTaskEnabled = false; // Flag per il task di retry
+const unsigned long RETRY_ROOT_INTERVAL = 1200000; // 20 min
+bool retryTaskEnabled = false; 
 float t,h,p,a,td;
 #define SEALEVELPRESSURE_HPA (1013.25)
-Adafruit_BME280 bme; // I2C
-
-#include "../namedmesh/namedMesh.h"
 
 #define   MESH_PREFIX     "whateverYouLike"
 #define   MESH_PASSWORD   "somethingSneaky"
 #define   MESH_PORT       5555
 
-Scheduler userScheduler; // to control your personal task
+Scheduler userScheduler; 
 namedMesh  mesh;
 
-String nodeName = "cantina"; // Name needs to be unique
+String nodeName = "cantina"; 
 String to = "bridgemqtt";
 uint32_t root_id = 0;
 
 #define ROLE    "cantina"
-#define VERSION "Cantina v4.0.2"
+#define VERSION "Cantina v4.0.5"
 #define MESSAGE "cantina "
 
-// User stub
-void sendMessage() ; // Prototype so PlatformIO doesn't complain
-void sendMessage1();
+// --- PROTOTIPI ---
+void sendWater();    // Veloce
+void sendEnv();      // Lento
+void sendStatus();   // Molto Lento (Concatenato)
 void retryRoot();
 
-Task taskSendMessage( TASK_SECOND * 1 , TASK_FOREVER, &sendMessage );
-Task taskSendMessage1( TASK_SECOND * 1 , TASK_FOREVER, &sendMessage1 );
+// --- DEFINIZIONE TASK ---
+// 1. Task Acqua: parte veloce
+Task taskWater( TASK_SECOND * 45, TASK_FOREVER, &sendWater );
+// 2. Task Ambiente: ogni 5 minuti
+Task taskEnv( TASK_MINUTE * 5, TASK_FOREVER, &sendEnv );
+// 3. Task Status: ogni 10 minuti
+Task taskStatus( TASK_MINUTE * 10, TASK_FOREVER, &sendStatus );
+// 4. Task Retry
 Task retryRootTask(RETRY_ROOT_INTERVAL, TASK_ONCE, &retryRoot);
 
-void sendMessage() {
-  read_bme280();
-  msg = "temperatura/";
-  msg += t;
-  mesh.sendSingle(to, msg);
-  msg = "umidita/";
-  msg += h;
-  mesh.sendSingle(to, msg);
-  msg = "pressione/";
-  msg += p;
-  mesh.sendSingle(to, msg);
-  msg = "altitudine/";
-  msg += a;
-  mesh.sendSingle(to, msg);
-  read_dallas();
-  msg = "temperaturad/";
-  msg += td;
-  mesh.sendSingle(to, msg);
-  taskSendMessage.setInterval( random( TASK_SECOND * 400, TASK_SECOND * 500 ));
-}
+// -----------------------------------------------------------
+// TASK 1: ACQUA (30-60 secondi)
+// -----------------------------------------------------------
+void sendWater() {
+  // 1. Facciamo una copia "atomica" degli impulsi attuali
+  noInterrupts();
+  unsigned long da_inviare = impulsi_accumulati;
+  interrupts();
 
-void sendMessage1() {
-  update_status();
-  taskSendMessage1.setInterval( random( TASK_SECOND * 600, TASK_SECOND * 700 ));
-}
-
-// Needed for painless library
-void receivedCallback( uint32_t from, String &msg ) {
-  Serial.printf("startHere: Received from %u msg=%s\n", from, msg.c_str());
-  root_id=from;
-}
-
-void newConnectionCallback(uint32_t nodeId) {
-    Serial.printf("--> startHere: New Connection, nodeId = %u\n", nodeId);
-}
-
-void changedConnectionCallback() {
-  Serial.println("changedConnectionCallback");
-  if (!mesh.isConnected(root_id)) {
-    Serial.println("Connessione al root persa! Pianifico il retry.");
-    if (!retryTaskEnabled) { // Controlla il flag
-      retryRootTask.enable();
-      retryTaskEnabled = true; // Imposta il flag
-    }
-  } else {
-    Serial.println("Connessione al root ripristinata.");
-    retryRootTask.disable();
-    retryTaskEnabled = false; // Resetta il flag
-}}
-
-void nodeTimeAdjustedCallback(int32_t offset) {
-    Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
-}
-
-void leggi_acqua() {
-  unsigned long interruptTime = millis();
-  if (interruptTime - lastInterruptTime > debounceDelay) {
-    pubblicaAcqua = true;
+  if (da_inviare == 0) {
+    // Niente acqua, niente spreco di tempo.
+    taskWater.setInterval(random(TASK_SECOND * 30, TASK_SECOND * 60));
+    return;
   }
-  lastInterruptTime = interruptTime;
+
+  // 2. Prepariamo il messaggio
+  msg = "acqua/";
+  msg += da_inviare;
+
+  // 3. Proviamo l'invio e controlliamo il risultato (bool)
+  // mesh.sendSingle restituisce true solo se il destinatario è in tabella e il buffer lo accetta
+  if (mesh.sendSingle(to, msg)) {
+    // SUCCESSO: La Mesh ha preso il pacchetto
+    LOG_PRINTF(">>> [ACQUA] Inviati %lu impulsi. Reset contatore.\n", da_inviare);
+    
+    noInterrupts();
+    // Sottraiamo solo quelli che abbiamo effettivamente inviato!
+    // Se nel frattempo ne è arrivato un altro, non lo perdiamo.
+    impulsi_accumulati -= da_inviare; 
+    interrupts();
+  } 
+  else {
+    // FALLIMENTO: Bridge non trovato o Mesh instabile
+    LOG_PRINTF(">>> [WARNING] Bridge non raggiungibile. Mantengo %lu impulsi nel buffer...\n", impulsi_accumulati);
+    
+    // Non azzeriamo nulla. Al prossimo giro (tra 30-60 sec) riproveremo 
+    // inviando la somma di quelli vecchi + quelli nuovi arrivati nel frattempo.
+  }
+
+  taskWater.setInterval(random(TASK_SECOND * 30, TASK_SECOND * 60));
 }
 
-void read_dallas() {
-  sensors.requestTemperatures();
-  td=sensors.getTempCByIndex(0);
-  if (isnan(td)) {
-          //Serial.println("Failed to read from Dallas sensor!");
-          msg = "error/FailedtoreadfromDallasSensor";
-          mesh.sendSingle(to, msg);
-          return;
-}}
-
-void update_status() {
-   long uptime = millis() / 60000L;
-  msg = "uptime/";
-  msg += uptime;
-  mesh.sendSingle(to, msg);
-  msg = "nodeid/";
-  msg += mesh.getNodeId();
-  mesh.sendSingle(to, msg);
-  msg = "freememory/";
-  msg += String(ESP.getFreeHeap());
-  mesh.sendSingle(to, msg);
-  msg = "version/";
-  msg += VERSION;
-  mesh.sendSingle(to, msg);
-  msg = "root/";
-  msg += root_id;
-  mesh.sendSingle(to, msg);
-  msg = "ip/";
-  msg += WiFi.localIP().toString();
-  mesh.sendSingle(to, msg);
-  msg = "wifisignal/";
-  msg += String(WiFi.RSSI());
-  mesh.sendSingle(to, msg);
-}
-
-void read_bme280() {
+// -----------------------------------------------------------
+// TASK 2: AMBIENTE (5-6 minuti)
+// -----------------------------------------------------------
+void sendEnv() {
+  // Lettura BME280
   h = bme.readHumidity();
   t = bme.readTemperature();
   p = bme.readPressure()/100;
   a = bme.readAltitude(SEALEVELPRESSURE_HPA);
+  
   if (isnan(h) || isnan(t)) {
-          //Serial.println("Failed to read from BME280 sensor!");
-          msg = "error/FailedtoreadfromBME280sensor";
-          mesh.sendSingle(to, msg);
-          return;
-}}
+     msg = "error/BME280_Fail";
+     mesh.sendSingle(to, msg);
+  } else {
+     msg = "temperatura/";
+     msg += t;
+     mesh.sendSingle(to, msg);
+     
+     msg = "umidita/";
+     msg += h;
+     mesh.sendSingle(to, msg);
+     
+     msg = "pressione/";
+     msg += p;
+     mesh.sendSingle(to, msg);
+     
+     msg = "altitudine/";
+     msg += a;
+     mesh.sendSingle(to, msg);
+  }
+
+  // Lettura Dallas
+  sensors.requestTemperatures(); // Blocca per ~750ms (inevitabile con libreria standard)
+  td = sensors.getTempCByIndex(0);
+  
+  if (td == -127.0 || isnan(td)) {
+      msg = "error/Dallas_Fail";
+      mesh.sendSingle(to, msg);
+  } else {
+      msg = "temperaturad/";
+      msg += td;
+      mesh.sendSingle(to, msg);
+  }
+
+  // Riprogramma random tra 5 e 6 minuti
+  taskEnv.setInterval( random( TASK_MINUTE * 5, TASK_MINUTE * 6 ));
+}
+
+// -----------------------------------------------------------
+// TASK 3: STATUS (10 minuti - Concatenato)
+// -----------------------------------------------------------
+void sendStatus() {
+  long uptime = millis() / 60000L;
+  
+  // 1. Uptime singolo (come richiesto)
+  msg = "uptime/";
+  msg += uptime;
+  mesh.sendSingle(to, msg);
+
+  // 2. Il resto concatenato in un'unica stringa
+  // Formato: id:xxx;mem:xxx;ver:xxx;...
+  String info = "cantina_info/"; // Nuovo topic unico per i dettagli
+  info += "id:" + String(mesh.getNodeId()) + ";";
+  info += "mem:" + String(ESP.getFreeHeap()) + ";";
+  info += "ver:" + String(VERSION) + ";";
+  info += "root:" + String(root_id) + ";";
+  info += "ip:" + WiFi.localIP().toString() + ";";
+  info += "rssi:" + String(WiFi.RSSI());
+  
+  mesh.sendSingle(to, info);
+
+  // Riprogramma random tra 10 e 11 minuti
+  taskStatus.setInterval( random( TASK_MINUTE * 10, TASK_MINUTE * 11 ));
+}
+
+// -----------------------------------------------------------
+// CALLBACK MESH
+// -----------------------------------------------------------
+void receivedCallback( uint32_t from, String &msg ) {
+  LOG_PRINTF("RX from %u msg=%s\n", from, msg.c_str());
+  if (root_id != 0 && from != 0 && root_id != from) {
+      LOG_PRINTF("!!! CRITICO: Root ID cambiato da %u a %u. Riavvio per pulizia cache.\n", root_id, from);
+      delay(200); 
+      ESP.restart();
+  }
+  root_id = from;
+}
+
+void newConnectionCallback(uint32_t nodeId) {
+  LOG_PRINTF("--> New Connection, nodeId = %u\n", nodeId);
+}
+
+void changedConnectionCallback() {
+  LOG_PRINTLN("changedConnectionCallback");
+  if (!mesh.isConnected(root_id)) {
+    LOG_PRINTLN("Root perso. Retry attivo.");
+    if (!retryTaskEnabled) { 
+      retryRootTask.enable();
+      retryTaskEnabled = true; 
+    }
+  } else {
+    LOG_PRINTLN("Root ripristinato.");
+    retryRootTask.disable();
+    retryTaskEnabled = false; 
+  }
+}
+
+void nodeTimeAdjustedCallback(int32_t offset) {
+  LOG_PRINTF("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(), offset);
+}
+
+// -----------------------------------------------------------
+// INTERRUPT E SETUP
+// -----------------------------------------------------------
+void leggi_acqua() {
+  unsigned long interruptTime = millis();
+  if (interruptTime - lastInterruptTime > debounceDelay) {
+    impulsi_accumulati++;
+  }
+  lastInterruptTime = interruptTime;
+}
 
 void retryRoot() {
   if (!mesh.isConnected(root_id)) {
-    Serial.println("Ancora offline dopo il retry. Riavvio...");
+    LOG_PRINTLN("Ancora offline. Riavvio...");
     ESP.restart();
   } else {
-    Serial.println("Root tornato online.");
-    retryTaskEnabled = false; // Resetta il flag anche qui, per sicurezza
-}}
+    retryTaskEnabled = false; 
+  }
+}
 
 void setup() {
-  Serial.begin(115200);
-  pinMode( 21, INPUT );
+  LOG_BEGIN(115200);
+  
   bme.begin(0x77);
   sensors.begin();
-  pinMode(acqua, INPUT);
+  
+  // INPUT_PULLUP per stabilità hardware sul Pin 0
+  pinMode(pin_acqua, INPUT_PULLUP); 
 
-//mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
-  mesh.setDebugMsgTypes( ERROR | STARTUP );  // set before init() so that you can see startup messages
+  #if ENABLE_DEBUG
+    mesh.setDebugMsgTypes( ERROR | STARTUP ); 
+  #else
+    mesh.setDebugMsgTypes( 0 ); 
+  #endif
+
   mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 11 );
   mesh.initOTAReceive(ROLE);
   mesh.setContainsRoot(true);
@@ -190,20 +281,18 @@ void setup() {
   mesh.onChangedConnections(&changedConnectionCallback);
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
 
-  userScheduler.addTask( taskSendMessage );
-  userScheduler.addTask( taskSendMessage1 );
-  taskSendMessage.enable();
-  taskSendMessage1.enable();
+  // Attiva i 3 Task separati
+  userScheduler.addTask( taskWater );
+  userScheduler.addTask( taskEnv );
+  userScheduler.addTask( taskStatus );
+  
+  taskWater.enable();
+  taskEnv.enable();
+  taskStatus.enable();
 
-  attachInterrupt(digitalPinToInterrupt(acqua), leggi_acqua, FALLING);
+  attachInterrupt(digitalPinToInterrupt(pin_acqua), leggi_acqua, FALLING);
 }
 
-
 void loop() {
-  // it will run the user scheduler as well
   mesh.update();
-  if (pubblicaAcqua == true) {
-    msg = "acqua/1";
-    mesh.sendSingle(to, msg);
-    pubblicaAcqua = false;
-}}
+}
