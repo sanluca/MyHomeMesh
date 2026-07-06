@@ -5,7 +5,7 @@
 // pin dallas D4 --> 2
 //pin rele D8 --> 15
 //pin conta bolle D5 --> 14
-//
+// esp8266 wemos d1 mini
 //************************************************************
 #include <EEPROM.h>
 #include <Wire.h>
